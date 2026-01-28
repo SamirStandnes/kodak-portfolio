@@ -59,17 +59,20 @@ git push heroku heroku-deploy:main
 
 ### 5. Migrate Data
 
-Run the migration script locally to copy your data to Heroku PostgreSQL:
+You can now use the automated deployment script to sync your local data to Heroku:
 
+```powershell
+# This script uses the DATABASE_URL stored in your local .env file
+.\workflows\deploy_data.ps1
+```
+
+Alternatively, run the migration script manually:
 ```bash
-# Get your Heroku DATABASE_URL
-heroku config:get DATABASE_URL
-
 # Run migration
 python -m heroku.scripts.migrate_db --sqlite database/portfolio.db --pg-url "your-database-url"
 ```
 
-### 6. Set Up Daily Price Updates
+## Set Up Daily Price Updates
 
 ```bash
 # Add Heroku Scheduler
@@ -117,12 +120,11 @@ To test locally with PostgreSQL:
 When you add new transactions locally:
 
 1. Process transactions locally (using the main workflow)
-2. Run the migration script again to sync to Heroku:
-   ```bash
-   python -m heroku.scripts.migrate_db --sqlite database/portfolio.db --pg-url $DATABASE_URL
+2. Sync to Heroku using the automated script:
+   ```powershell
+   .\workflows\deploy_data.ps1
    ```
-
-Note: This will overwrite all data in the Heroku database with your local data.
+   *Note: This will overwrite all data in the Heroku database with your local data.*
 
 ## Files
 

@@ -105,6 +105,12 @@ To see how your portfolio is doing today without adding new data:
 .\workflows\refresh_market_data.ps1
 ```
 
+### Deploying Data to Cloud (Heroku)
+To sync your latest local transactions and prices to the Heroku dashboard:
+```powershell
+.\workflows\deploy_data.ps1
+```
+
 ### Automate Daily Updates (Optional)
 Set up a scheduled task to refresh prices automatically:
 
