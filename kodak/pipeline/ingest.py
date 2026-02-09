@@ -2,6 +2,7 @@ import os
 import glob
 import pandas as pd
 import logging
+from collections import Counter
 from datetime import datetime
 from kodak.shared.utils import setup_logging, generate_txn_hash
 from kodak.shared.db import get_connection, execute_non_query, execute_query
@@ -73,8 +74,8 @@ def run_ingestion():
         return
 
     # 3. Load Existing Hashes (Deduplication)
-    # Use ISIN instead of symbol for consistent matching (parser uses security name, DB uses ticker)
-    # Generate hashes with BOTH amount and amount_local to handle data inconsistencies
+    # Count-based dedup: allows legitimate duplicate transactions (e.g. two transfers
+    # of the same amount on the same date) while still catching re-imports.
     existing_txns = execute_query('''
         SELECT t.date, a.external_id as acc_ext, t.type, i.isin, t.amount, t.amount_local
         FROM transactions t
@@ -82,50 +83,50 @@ def run_ingestion():
         LEFT JOIN instruments i ON t.instrument_id = i.id
     ''')
 
-    existing_hashes = set()
+    existing_h1_counts = Counter()
+    existing_h2_hashes = set()
     for row in existing_txns:
         isin = row['isin'] if row['isin'] else ''
         amt = row['amount']
         amt_local = row['amount_local']
-        # Add hash with amount (for foreign dividends where parser lacks FX rate)
         h1 = generate_txn_hash(row['date'], row['acc_ext'], row['type'], isin, amt)
-        existing_hashes.add(h1)
-        # Add hash with amount_local only if non-zero (avoids false matches)
+        existing_h1_counts[h1] += 1
+        # h2 (amount_local) as broad fallback for foreign currency edge cases
         if amt_local:
             h2 = generate_txn_hash(row['date'], row['acc_ext'], row['type'], isin, amt_local)
-            existing_hashes.add(h2)
+            existing_h2_hashes.add(h2)
 
     # 4. Filter & Stage
     to_stage = []
     skipped_existing = 0
-    skipped_batch = 0
-    batch_hashes = set()
+    incoming_h1_counts = Counter()
 
     for item in all_rows:
         isin = item['isin'] if item['isin'] else ''
         amt = item['amount']
         amt_local = item['amount_local']
 
-        # Check both amount and amount_local hashes against existing DB records
         h1 = generate_txn_hash(item['date'], item['account_external_id'], item['type'], isin, amt)
         h2 = generate_txn_hash(item['date'], item['account_external_id'], item['type'], isin, amt_local) if amt_local else None
 
-        if h1 in existing_hashes or (h2 and h2 in existing_hashes):
+        incoming_h1_counts[h1] += 1
+
+        # Count-aware check: if file has N rows with this hash and DB has M,
+        # skip the first M occurrences (already in DB) and keep the rest
+        if incoming_h1_counts[h1] <= existing_h1_counts.get(h1, 0):
             skipped_existing += 1
             continue
 
-        # For batch deduplication, only use amount hash (amount_local=0 causes false positives)
-        if h1 in batch_hashes:
-            skipped_batch += 1
+        # Fuzzy match via h2 for foreign currency transactions where amount differs
+        if h2 and h2 != h1 and h2 in existing_h2_hashes:
+            skipped_existing += 1
             continue
-
-        batch_hashes.add(h1)
 
         item['hash'] = h1
         item['batch_id'] = batch_id
         to_stage.append(item)
 
-    logging.info(f"Staging {len(to_stage)} transactions (Skipped {skipped_existing} existing, {skipped_batch} batch duplicates).")
+    logging.info(f"Staging {len(to_stage)} transactions (Skipped {skipped_existing} existing).")
     
     if not to_stage:
         return

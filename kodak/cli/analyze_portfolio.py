@@ -86,17 +86,9 @@ def get_portfolio_data():
         item['weight_pct'] = (item['market_value'] / total_market_value * 100) if total_market_value > 0 else 0
 
     # Calculate cash balance
-    cash_rows = pd.read_sql("SELECT currency, SUM(amount) as total FROM transactions GROUP BY currency", get_connection())
-    cash_balance_nok = 0.0
-    for _, row in cash_rows.iterrows():
-        curr = row['currency']
-        amt = row['total']
-        if curr == BASE_CURRENCY:
-            cash_balance_nok += amt
-        else:
-            if curr not in fx_cache:
-                fx_cache[curr] = get_exchange_rate(curr, BASE_CURRENCY)
-            cash_balance_nok += amt * fx_cache[curr]
+    cash_balance_nok = pd.read_sql(
+        "SELECT COALESCE(SUM(amount_local), 0) as total FROM transactions", get_connection()
+    ).iloc[0]['total']
 
     summary = {
         'total_market_value': total_market_value,

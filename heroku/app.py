@@ -11,25 +11,43 @@ import os
 def check_password():
     """Returns True if the user has entered the correct password."""
 
-    def password_entered():
-        if st.session_state.get("password") == os.environ.get("DASHBOARD_PASSWORD", ""):
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]
-        else:
-            st.session_state["password_correct"] = False
+    if st.session_state.get("password_correct"):
+        return True
 
-    if "password_correct" not in st.session_state:
-        st.set_page_config(page_title="Kodak Portfolio", page_icon="🔒", layout="centered")
-        st.title("🔒 Kodak Portfolio")
-        st.text_input("Enter password:", type="password", on_change=password_entered, key="password")
-        return False
-    elif not st.session_state["password_correct"]:
-        st.set_page_config(page_title="Kodak Portfolio", page_icon="🔒", layout="centered")
-        st.title("🔒 Kodak Portfolio")
-        st.text_input("Enter password:", type="password", on_change=password_entered, key="password")
-        st.error("Incorrect password")
-        return False
-    return True
+    st.set_page_config(page_title="Kodak Portfolio", page_icon="📈", layout="centered")
+
+    # Hide default Streamlit chrome for a clean login screen
+    st.markdown("""
+        <style>
+        #MainMenu, header, footer {visibility: hidden;}
+        .block-container {
+            max-width: 420px;
+            padding-top: 8vh;
+        }
+        /* Make the submit button full-width and larger for mobile */
+        .stForm [data-testid="stFormSubmitButton"] button {
+            width: 100%;
+            padding: 0.6rem 1rem;
+            font-size: 1.1rem;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.title("Kodak Portfolio")
+    st.caption("Enter your password to continue")
+
+    with st.form("login_form"):
+        password = st.text_input("Password", type="password", label_visibility="collapsed", placeholder="Password")
+        submitted = st.form_submit_button("Log in", use_container_width=True, type="primary")
+
+    if submitted:
+        if password == os.environ.get("DASHBOARD_PASSWORD", ""):
+            st.session_state["password_correct"] = True
+            st.rerun()
+        else:
+            st.error("Incorrect password. Please try again.")
+
+    return False
 
 
 # --- MAIN APPLICATION ---
@@ -159,10 +177,10 @@ if check_password():
                     )
                 ''', conn)
 
-                cash_rows = pd.read_sql_query(
-                    "SELECT currency, SUM(amount) as total FROM transactions GROUP BY currency",
+                total_cash_base = pd.read_sql_query(
+                    "SELECT COALESCE(SUM(amount_local), 0) as total FROM transactions",
                     conn
-                )
+                ).iloc[0]['total']
 
             price_map = {row['instrument_id']: {'price': row['close'], 'currency': row['currency']}
                         for _, row in prices.iterrows()}
@@ -199,17 +217,6 @@ if check_password():
                         'Region': meta.get('region') or 'Unknown',
                         'Asset Class': meta.get('asset_class') or 'Equity'
                     })
-
-            total_cash_base = 0
-            for _, row in cash_rows.iterrows():
-                curr = row['currency']
-                amt = row['total']
-                if curr == BASE_CURRENCY:
-                    total_cash_base += amt
-                else:
-                    if curr not in fx_cache:
-                        fx_cache[curr] = get_exchange_rate(curr, BASE_CURRENCY)
-                    total_cash_base += amt * fx_cache[curr]
 
             income = get_income_and_costs()
 

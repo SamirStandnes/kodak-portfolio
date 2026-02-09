@@ -86,18 +86,10 @@ def load_summary_data():
                 'Asset Class': meta.get('asset_class') or 'Equity'
             })
 
-    # 2. Cash Balance (Approximate)
-    cash_rows = pd.read_sql_query("SELECT currency, SUM(amount) as total FROM transactions GROUP BY currency", conn)
-    total_cash_base = 0
-    for _, row in cash_rows.iterrows():
-        curr = row['currency']
-        amt = row['total']
-        if curr == BASE_CURRENCY:
-            total_cash_base += amt
-        else:
-            if curr not in fx_cache:
-                fx_cache[curr] = get_exchange_rate(curr, BASE_CURRENCY)
-            total_cash_base += amt * fx_cache[curr]
+    # 2. Cash Balance
+    total_cash_base = pd.read_sql_query(
+        "SELECT COALESCE(SUM(amount_local), 0) as total FROM transactions", conn
+    ).iloc[0]['total']
 
     # 3. Income Totals
     income = get_income_and_costs()
