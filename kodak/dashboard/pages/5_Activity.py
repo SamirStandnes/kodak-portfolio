@@ -9,14 +9,16 @@ import streamlit as st
 import pandas as pd
 from kodak.shared.db import get_connection
 from kodak.shared.utils import load_config
+from kodak.dashboard.style import apply_theme, page_header
 
 # --- CONFIGURATION ---
 config = load_config()
 BASE_CURRENCY = config.get('base_currency', 'NOK')
 
 st.set_page_config(page_title="Activity", page_icon="📝", layout="wide")
+apply_theme()
 
-st.title("📝 Portfolio Activity")
+page_header("Portfolio Activity", "Full transaction history")
 
 # --- CONTROLS ---
 col1, col2 = st.columns([2, 1])
@@ -28,9 +30,9 @@ with col1:
 @st.cache_data(ttl=300)  # Cache for 5 minutes
 def load_activity_data(limit, all_txns):
     conn = get_connection()
-    
+
     query = """
-        SELECT 
+        SELECT
             t.date,
             a.name as account,
             t.type,
@@ -48,10 +50,10 @@ def load_activity_data(limit, all_txns):
         LEFT JOIN instruments i ON t.instrument_id = i.id
         ORDER BY t.date DESC, t.id DESC
     """
-    
+
     if not all_txns:
         query += f" LIMIT {limit}"
-        
+
     df = pd.read_sql_query(query, conn)
     conn.close()
     return df

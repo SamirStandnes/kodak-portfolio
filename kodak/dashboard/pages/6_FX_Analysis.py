@@ -9,14 +9,16 @@ import streamlit as st
 import pandas as pd
 from kodak.shared.calculations import get_fx_performance_detailed
 from kodak.shared.utils import load_config, format_local
+from kodak.dashboard.style import apply_theme, page_header, styled_subheader
 
 # --- CONFIGURATION ---
 config = load_config()
 BASE_CURRENCY = config.get('base_currency', 'NOK')
 
 st.set_page_config(page_title="FX Analysis", page_icon="💱", layout="wide")
+apply_theme()
 
-st.title("💱 Currency Performance")
+page_header("Currency Performance", "Foreign exchange impact on your portfolio")
 
 @st.cache_data(ttl=300)  # Cache for 5 minutes
 def load_fx_data():
@@ -39,7 +41,7 @@ else:
     st.divider()
 
     # Detailed breakdown
-    st.subheader("FX P&L by Currency")
+    styled_subheader("FX P&L by Currency")
 
     # Create display dataframe with better column names
     display_df = df[[
@@ -64,21 +66,21 @@ else:
                 help="Realized FX gains/losses from currency exchange transactions"
             ),
             "realized_securities_pl": st.column_config.NumberColumn(
-                f"Securities P&L (Realized)",
+                "Securities P&L (Realized)",
                 format="localized",
                 help="FX gains/losses realized when selling foreign securities"
             ),
             "total_realized_pl": st.column_config.NumberColumn(
-                f"Total Realized",
+                "Total Realized",
                 format="localized"
             ),
             "unrealized_securities_pl": st.column_config.NumberColumn(
-                f"Securities P&L (Unrealized)",
+                "Securities P&L (Unrealized)",
                 format="localized",
                 help="FX gains/losses on current holdings due to exchange rate changes"
             ),
             "total_unrealized_pl": st.column_config.NumberColumn(
-                f"Total Unrealized",
+                "Total Unrealized",
                 format="localized"
             ),
             "total_fx_pl": st.column_config.NumberColumn(
@@ -95,6 +97,6 @@ else:
     st.caption("""
     **How FX P&L is calculated:**
     - **Cash P&L**: Gains/losses from explicit currency exchange transactions
-    - **Securities P&L (Realized)**: When you sell a foreign stock, FX P&L = proceeds × (sale rate - avg purchase rate)
-    - **Securities P&L (Unrealized)**: For current holdings, FX P&L = current value × (current rate - avg purchase rate)
+    - **Securities P&L (Realized)**: When you sell a foreign stock, FX P&L = proceeds x (sale rate - avg purchase rate)
+    - **Securities P&L (Unrealized)**: For current holdings, FX P&L = current value x (current rate - avg purchase rate)
     """)
