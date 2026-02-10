@@ -24,6 +24,10 @@ def check_password():
             max-width: 420px;
             padding-top: 8vh;
         }
+        /* Hide "Press Enter to submit" tooltip above input */
+        [data-testid="InputInstructions"] {
+            display: none;
+        }
         /* Make the submit button full-width and larger for mobile */
         .stForm [data-testid="stFormSubmitButton"] button {
             width: 100%;
