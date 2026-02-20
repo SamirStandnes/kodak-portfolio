@@ -7,6 +7,71 @@ Uses PostgreSQL and includes password protection.
 import streamlit as st
 import os
 
+# --- JARVIS STATIC API ---
+# Generates holdings.json and summary.json on startup, served as static files.
+# Jarvis fetches: https://<app>.herokuapp.com/app/static/api/holdings.json?token=<password>
+@st.cache_resource(ttl=300)
+def _generate_static_api():
+    try:
+        import heroku.setup_adapters  # noqa: F401
+        import json, pandas as pd
+        from pathlib import Path
+        from kodak.shared.calculations import get_holdings, get_income_and_costs
+        from kodak.shared.market_data import get_exchange_rate
+        from kodak.shared.utils import load_config
+        from kodak.shared.db import get_db_connection
+
+        cfg = load_config()
+        base = cfg.get("base_currency", "NOK")
+        static_dir = Path(__file__).parent / "static" / "api"
+        static_dir.mkdir(parents=True, exist_ok=True)
+
+        # Holdings
+        with get_db_connection() as conn:
+            df_h = get_holdings()
+            prices = pd.read_sql_query("""
+                SELECT mp.instrument_id, mp.close, i.currency, i.symbol, i.name,
+                       i.sector, i.region, i.country, i.asset_class
+                FROM market_prices mp JOIN instruments i ON mp.instrument_id = i.id
+                WHERE (mp.instrument_id, mp.date) IN (
+                    SELECT instrument_id, MAX(date) FROM market_prices GROUP BY instrument_id
+                )
+            """, conn)
+
+        pm = {r["instrument_id"]: r for _, r in prices.iterrows()}
+        fx, rows, total = {}, [], 0
+        for _, r in df_h.iterrows():
+            m = pm.get(r["instrument_id"])
+            if m is None: continue
+            curr = m["currency"]
+            rate = 1.0 if curr == base else fx.setdefault(curr, get_exchange_rate(curr, base))
+            val = r["quantity"] * m["close"] * rate
+            cost = r["cost_basis_local"]
+            total += val
+            rows.append({"symbol": r["symbol"], "quantity": round(float(r["quantity"]), 4),
+                "sector": m["sector"], "region": m["region"], "country": m["country"],
+                "asset_class": m["asset_class"], "currency": curr,
+                "price": round(float(m["close"]), 4), "market_value": round(val, 2),
+                "cost_basis": round(cost, 2), "gain_loss": round(val - cost, 2),
+                "return_pct": round((val / cost - 1) * 100, 2) if cost > 0 else 0})
+        for row in rows:
+            row["weight_pct"] = round(row["market_value"] / total * 100, 2) if total > 0 else 0
+        rows.sort(key=lambda x: x["market_value"], reverse=True)
+        holdings_payload = {"base_currency": base, "total_market_value": round(total, 2), "holdings": rows}
+        (static_dir / "holdings.json").write_text(json.dumps(holdings_payload, indent=2))
+
+        # Summary
+        income = get_income_and_costs()
+        summary_payload = {"base_currency": base,
+            "dividends": round(float(income["dividends"]), 2),
+            "interest": round(float(income["interest"]), 2),
+            "fees": round(float(income["fees"]), 2)}
+        (static_dir / "summary.json").write_text(json.dumps(summary_payload, indent=2))
+    except Exception:
+        pass
+
+_generate_static_api()
+
 # --- JARVIS API ---
 # Serves portfolio data as JSON for Jarvis without requiring a browser session.
 # Usage: GET /?jarvis=1&token=<DASHBOARD_PASSWORD>&resource=holdings|summary
