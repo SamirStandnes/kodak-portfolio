@@ -7,6 +7,85 @@ Uses PostgreSQL and includes password protection.
 import streamlit as st
 import os
 
+# --- JARVIS API ---
+# Serves portfolio data as JSON for Jarvis without requiring a browser session.
+# Usage: GET /?jarvis=1&token=<DASHBOARD_PASSWORD>&resource=holdings|summary
+_qp = st.query_params
+if _qp.get("jarvis") == "1" and _qp.get("token") == os.environ.get("DASHBOARD_PASSWORD", ""):
+    import heroku.setup_adapters  # noqa: F401
+    import json
+    import pandas as pd
+    from kodak.shared.calculations import get_holdings, get_income_and_costs
+    from kodak.shared.market_data import get_exchange_rate
+    from kodak.shared.utils import load_config
+
+    st.set_page_config(page_title="Kodak API", layout="wide")
+
+    _cfg = load_config()
+    _base = _cfg.get("base_currency", "NOK")
+    _resource = _qp.get("resource", "holdings")
+
+    if _resource == "holdings":
+        from kodak.shared.db import get_db_connection
+        with get_db_connection() as _conn:
+            _df_h = get_holdings()
+            _prices = pd.read_sql_query("""
+                SELECT mp.instrument_id, mp.close, i.currency, i.symbol, i.name,
+                       i.sector, i.region, i.country, i.asset_class
+                FROM market_prices mp
+                JOIN instruments i ON mp.instrument_id = i.id
+                WHERE (mp.instrument_id, mp.date) IN (
+                    SELECT instrument_id, MAX(date) FROM market_prices GROUP BY instrument_id
+                )
+            """, _conn)
+
+        _pm = {r["instrument_id"]: r for _, r in _prices.iterrows()}
+        _fx, _rows, _total = {}, [], 0
+
+        for _, _r in _df_h.iterrows():
+            _m = _pm.get(_r["instrument_id"])
+            if _m is None:
+                continue
+            _curr = _m["currency"]
+            _rate = 1.0 if _curr == _base else _fx.setdefault(_curr, get_exchange_rate(_curr, _base))
+            _val = _r["quantity"] * _m["close"] * _rate
+            _cost = _r["cost_basis_local"]
+            _total += _val
+            _rows.append({
+                "symbol": _r["symbol"],
+                "quantity": round(float(_r["quantity"]), 4),
+                "sector": _m["sector"],
+                "region": _m["region"],
+                "country": _m["country"],
+                "asset_class": _m["asset_class"],
+                "currency": _curr,
+                "price": round(float(_m["close"]), 4),
+                "market_value": round(_val, 2),
+                "cost_basis": round(_cost, 2),
+                "gain_loss": round(_val - _cost, 2),
+                "return_pct": round((_val / _cost - 1) * 100, 2) if _cost > 0 else 0,
+            })
+
+        for _row in _rows:
+            _row["weight_pct"] = round(_row["market_value"] / _total * 100, 2) if _total > 0 else 0
+
+        _rows.sort(key=lambda x: x["market_value"], reverse=True)
+        _payload = {"base_currency": _base, "total_market_value": round(_total, 2), "holdings": _rows}
+
+    elif _resource == "summary":
+        _income = get_income_and_costs()
+        _payload = {
+            "base_currency": _base,
+            "dividends": round(float(_income["dividends"]), 2),
+            "interest": round(float(_income["interest"]), 2),
+            "fees": round(float(_income["fees"]), 2),
+        }
+    else:
+        _payload = {"error": f"Unknown resource: {_resource}. Use holdings or summary."}
+
+    st.code(json.dumps(_payload, indent=2), language="json")
+    st.stop()
+
 # --- PASSWORD AUTHENTICATION ---
 def check_password():
     """Returns True if the user has entered the correct password."""
