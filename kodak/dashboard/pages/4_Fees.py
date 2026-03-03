@@ -7,16 +7,19 @@ if root_path not in sys.path:
 
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 from kodak.shared.calculations import get_fee_details, get_fee_analysis, get_platform_fees
 from kodak.shared.utils import load_config, format_local
+from kodak.dashboard.style import apply_theme, page_header, styled_subheader, get_plotly_layout, COLORS
 
 # --- CONFIGURATION ---
 config = load_config()
 BASE_CURRENCY = config.get('base_currency', 'NOK')
 
 st.set_page_config(page_title="Fee Analysis", page_icon="💸", layout="wide")
+apply_theme()
 
-st.title("💸 Fee Analysis")
+page_header("Fee Analysis", "Trading costs and platform fees")
 
 @st.cache_data(ttl=300)  # Cache for 5 minutes
 def load_fee_data():
@@ -25,16 +28,31 @@ def load_fee_data():
 df_yearly, df_currency, df_top = load_fee_data()
 
 total_fees = df_yearly['total'].sum()
-st.metric(f"Total Fees Paid (All Time)", format_local(total_fees))
+st.metric("Total Fees Paid (All Time)", format_local(total_fees))
 
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("Fees by Year")
-    st.bar_chart(df_yearly.set_index('year'), color="#e67e22")
+    styled_subheader("Fees by Year")
+    if not df_yearly.empty:
+        fig = px.bar(
+            df_yearly, x='year', y='total',
+            color_discrete_sequence=[COLORS["yellow"]],
+        )
+        fig.update_layout(**get_plotly_layout(
+            showlegend=False,
+            xaxis=dict(title="", gridcolor="#21262D", linecolor="#30363D",
+                       zerolinecolor="#30363D", title_font=dict(color="#8B949E"),
+                       tickfont=dict(color="#8B949E")),
+            yaxis=dict(title=f"Amount ({BASE_CURRENCY})", gridcolor="#21262D",
+                       linecolor="#30363D", zerolinecolor="#30363D",
+                       title_font=dict(color="#8B949E"), tickfont=dict(color="#8B949E")),
+        ))
+        fig.update_traces(marker_line_color="#0E1117", marker_line_width=1)
+        st.plotly_chart(fig, use_container_width=True)
 
 with col2:
-    st.subheader("Fees by Currency")
+    styled_subheader("Fees by Currency")
     st.dataframe(
         df_currency,
         column_config={
@@ -46,7 +64,7 @@ with col2:
     )
 
 st.divider()
-st.subheader("Recent Individual Fees")
+styled_subheader("Recent Individual Fees")
 st.dataframe(
     df_top,
     column_config={
@@ -60,7 +78,7 @@ st.dataframe(
 )
 
 st.divider()
-st.subheader("Fee Efficiency by Broker")
+styled_subheader("Fee Efficiency by Broker")
 st.caption(f"Cost per 100 {BASE_CURRENCY} traded (lower is better)")
 
 df_broker = get_fee_analysis()
@@ -82,12 +100,26 @@ if not df_broker.empty:
         )
 
     with col2:
-        st.bar_chart(df_broker.set_index('broker')['fee_per_100'], color="#e74c3c")
+        fig = px.bar(
+            df_broker, x='broker', y='fee_per_100',
+            color_discrete_sequence=[COLORS["red"]],
+        )
+        fig.update_layout(**get_plotly_layout(
+            showlegend=False,
+            xaxis=dict(title="", gridcolor="#21262D", linecolor="#30363D",
+                       zerolinecolor="#30363D", title_font=dict(color="#8B949E"),
+                       tickfont=dict(color="#8B949E")),
+            yaxis=dict(title=f"Fee per 100 {BASE_CURRENCY}", gridcolor="#21262D",
+                       linecolor="#30363D", zerolinecolor="#30363D",
+                       title_font=dict(color="#8B949E"), tickfont=dict(color="#8B949E")),
+        ))
+        fig.update_traces(marker_line_color="#0E1117", marker_line_width=1)
+        st.plotly_chart(fig, use_container_width=True)
 else:
     st.info("No trading data available for fee analysis.")
 
 st.divider()
-st.subheader("Platform & Custody Fees by Broker")
+styled_subheader("Platform & Custody Fees by Broker")
 st.caption("Monthly subscription/custody fees (not per-trade)")
 
 df_platform = get_platform_fees()
@@ -108,6 +140,20 @@ if not df_platform.empty:
         )
 
     with col2:
-        st.bar_chart(df_platform.set_index('broker')['monthly_avg'], color="#9b59b6")
+        fig = px.bar(
+            df_platform, x='broker', y='monthly_avg',
+            color_discrete_sequence=[COLORS["purple"]],
+        )
+        fig.update_layout(**get_plotly_layout(
+            showlegend=False,
+            xaxis=dict(title="", gridcolor="#21262D", linecolor="#30363D",
+                       zerolinecolor="#30363D", title_font=dict(color="#8B949E"),
+                       tickfont=dict(color="#8B949E")),
+            yaxis=dict(title=f"Avg Monthly ({BASE_CURRENCY})", gridcolor="#21262D",
+                       linecolor="#30363D", zerolinecolor="#30363D",
+                       title_font=dict(color="#8B949E"), tickfont=dict(color="#8B949E")),
+        ))
+        fig.update_traces(marker_line_color="#0E1117", marker_line_width=1)
+        st.plotly_chart(fig, use_container_width=True)
 else:
     st.info("No platform fee data available.")
