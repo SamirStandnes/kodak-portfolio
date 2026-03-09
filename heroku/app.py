@@ -7,6 +7,31 @@ Uses PostgreSQL and includes password protection.
 import streamlit as st
 import os
 
+# --- COLOR PALETTE (matches local dashboard) ---
+COLORS = {
+    "primary": "#4A90D9",
+    "positive": "#27AE60",
+    "negative": "#E74C3C",
+    "warning": "#F39C12",
+    "purple": "#8E44AD",
+    "neutral": "#95A5A6",
+    "light_blue": "#5DADE2",
+    "text_muted": "#AAB2BD",
+}
+
+PLOTLY_LAYOUT = dict(
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    font=dict(color="#FAFAFA", size=13),
+    margin=dict(l=40, r=40, t=50, b=40),
+    hovermode="x unified",
+    legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=12)),
+)
+
+def apply_plotly_theme(fig):
+    fig.update_layout(**PLOTLY_LAYOUT)
+    return fig
+
 # --- JARVIS STATIC API ---
 # Generates holdings.json and summary.json on startup, served as static files.
 # Jarvis fetches: https://<app>.herokuapp.com/app/static/api/holdings.json?token=<password>
@@ -227,6 +252,17 @@ if check_password():
     # --- CONFIGURATION ---
     config = load_config()
     BASE_CURRENCY = config.get('base_currency', 'NOK')
+    CACHE_TTL = 300
+
+    PALETTE = [COLORS['primary'], COLORS['positive'], COLORS['warning'],
+               COLORS['purple'], COLORS['light_blue'], COLORS['negative'], COLORS['neutral']]
+
+    def convert_to_base(amount, currency, fx_cache):
+        if currency == BASE_CURRENCY:
+            return amount
+        if currency not in fx_cache:
+            fx_cache[currency] = get_exchange_rate(currency, BASE_CURRENCY)
+        return amount * fx_cache[currency]
 
     st.set_page_config(
         page_title=f"Kodak Portfolio ({BASE_CURRENCY})",
@@ -309,7 +345,7 @@ if check_password():
     if page == "Overview":
         st.title("Portfolio Overview")
 
-        @st.cache_data(ttl=300)
+        @st.cache_data(ttl=CACHE_TTL)
         def load_summary_data():
             with get_db_connection() as conn:
                 df_holdings = get_holdings()
@@ -350,17 +386,9 @@ if check_password():
                 meta = meta_map.get(inst_id, {})
 
                 if mkt:
-                    curr = mkt['currency']
                     price = mkt['price']
-
-                    if curr == BASE_CURRENCY:
-                        rate = 1.0
-                    else:
-                        if curr not in fx_cache:
-                            fx_cache[curr] = get_exchange_rate(curr, BASE_CURRENCY)
-                        rate = fx_cache[curr]
-
-                    val = row['quantity'] * price * rate
+                    curr = mkt['currency']
+                    val = row['quantity'] * convert_to_base(price, curr, fx_cache)
                     total_market_value += val
                     total_cost += row['cost_basis_local']
 
@@ -385,27 +413,34 @@ if check_password():
 
         data = load_summary_data()
 
-        st.subheader("Net Equity Overview")
-        col1, col2, col3 = st.columns(3)
-
         net_worth = data['market_value'] + data['cash']
         total_gain = data['market_value'] - data['cost_basis']
         total_return_pct = (data['market_value'] / data['cost_basis'] - 1) * 100 if data['cost_basis'] > 0 else 0
 
-        col1.metric("Total Net Equity", format_local(net_worth))
-        col2.metric("Stock Holdings", format_local(data['market_value']))
-        col3.metric("Cash & Margin", format_local(data['cash']))
+        # Hero metric
+        st.markdown(
+            f"""
+            <div style="text-align:center; padding: 1.5rem 0 0.5rem;">
+                <span style="font-size:1rem; color:{COLORS['text_muted']};">Total Net Equity</span><br/>
+                <span style="font-size:2.8rem; font-weight:700; color:#FAFAFA;">{format_local(net_worth)}</span>
+                <span style="font-size:1rem; color:{COLORS['text_muted']};"> {BASE_CURRENCY}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-        st.subheader("Performance & Growth")
-        col4, col5, col6 = st.columns(3)
-        col4.metric("Unrealized Gain/Loss", format_local(total_gain), f"{format_local(total_return_pct, 2)}%")
-        col5.metric("Invested Capital", format_local(data['cost_basis']))
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Stock Holdings", format_local(data['market_value']))
+        col2.metric("Cash & Margin", format_local(data['cash']), help="Negative = margin usage")
+        col3.metric("Unrealized P&L", format_local(total_gain), f"{format_local(total_return_pct, 1)}%")
+        col4.metric("Cost Basis", format_local(data['cost_basis']))
 
-        st.subheader("Cash Flow (All Time)")
-        col6, col7, col8 = st.columns(3)
-        col6.metric("Total Dividends", format_local(data['dividends']))
-        col7.metric("Total Interest", format_local(data['interest']))
-        col8.metric("Total Fees", format_local(data['fees']))
+        st.divider()
+
+        col5, col6, col7 = st.columns(3)
+        col5.metric("Dividends", format_local(data['dividends']))
+        col6.metric("Interest Paid", format_local(data['interest']), delta_color="inverse")
+        col7.metric("Fees Paid", format_local(data['fees']), delta_color="inverse")
 
         st.divider()
 
@@ -414,19 +449,23 @@ if check_password():
         if not df_alloc.empty:
             acol1, acol2 = st.columns(2)
             with acol1:
-                fig_sector = px.pie(df_alloc, values='Market Value', names='Sector', title='By Sector')
+                fig_sector = px.pie(df_alloc, values='Market Value', names='Sector',
+                                    title='By Sector', color_discrete_sequence=PALETTE, hole=0.4)
+                apply_plotly_theme(fig_sector)
                 st.plotly_chart(fig_sector, use_container_width=True)
             with acol2:
-                fig_region = px.pie(df_alloc, values='Market Value', names='Region', title='By Region')
+                fig_region = px.pie(df_alloc, values='Market Value', names='Region',
+                                    title='By Region', color_discrete_sequence=PALETTE, hole=0.4)
+                apply_plotly_theme(fig_region)
                 st.plotly_chart(fig_region, use_container_width=True)
 
     # ========================================
     # PAGE: HOLDINGS
     # ========================================
     elif page == "Holdings":
-        st.title("Current Holdings")
+        st.title("🏦 Holdings")
 
-        @st.cache_data(ttl=300)
+        @st.cache_data(ttl=CACHE_TTL)
         def load_holdings_data():
             with get_db_connection() as conn:
                 df_holdings = get_holdings()
@@ -457,15 +496,7 @@ if check_password():
 
                 price = mkt['close']
                 curr = mkt['currency']
-
-                if curr == BASE_CURRENCY:
-                    rate = 1.0
-                else:
-                    if curr not in fx_cache:
-                        fx_cache[curr] = get_exchange_rate(curr, BASE_CURRENCY)
-                    rate = fx_cache[curr]
-
-                market_val = row['quantity'] * price * rate
+                market_val = row['quantity'] * convert_to_base(price, curr, fx_cache)
                 cost_basis = row['cost_basis_local']
                 gain = market_val - cost_basis
                 ret_pct = (market_val / cost_basis - 1) * 100 if cost_basis > 0 else 0
@@ -516,17 +547,16 @@ if check_password():
     elif page == "Dividends":
         st.title("💰 Dividend Analysis")
 
-        @st.cache_data(ttl=300)
+        @st.cache_data(ttl=CACHE_TTL)
         def load_dividend_data():
             return get_dividend_details()
 
-        @st.cache_data(ttl=300)
+        @st.cache_data(ttl=CACHE_TTL)
         def load_dividend_forecast():
             return get_dividend_forecast()
 
         df_yearly, df_current_year, df_all_time = load_dividend_data()
 
-        # Round numeric columns for clean display
         if not df_current_year.empty:
             df_current_year['total'] = df_current_year['total'].round(0)
         if not df_all_time.empty:
@@ -537,7 +567,10 @@ if check_password():
         with col1:
             st.subheader("Dividends by Year")
             if not df_yearly.empty:
-                st.bar_chart(df_yearly.set_index('year'), color="#2ecc71")
+                fig = px.bar(df_yearly, x='year', y='total', color_discrete_sequence=[COLORS['positive']])
+                fig.update_layout(xaxis_title="", yaxis_title=BASE_CURRENCY, showlegend=False)
+                apply_plotly_theme(fig)
+                st.plotly_chart(fig, use_container_width=True)
 
         with col2:
             st.subheader("Top Payers (Current Year)")
@@ -572,7 +605,6 @@ if check_password():
             df_forecast, forecast_summary = load_dividend_forecast()
 
         if not df_forecast.empty:
-            # Round numeric columns
             df_forecast['quantity'] = df_forecast['quantity'].round(0)
             df_forecast['annual_estimate'] = df_forecast['annual_estimate'].round(0)
             df_forecast['annual_estimate_local'] = df_forecast['annual_estimate_local'].round(0)
@@ -600,15 +632,14 @@ if check_password():
     # PAGE: INTEREST
     # ========================================
     elif page == "Interest":
-        st.title("🏦 Interest Analysis")
+        st.title("💳 Interest Analysis")
 
-        @st.cache_data(ttl=300)
+        @st.cache_data(ttl=CACHE_TTL)
         def load_interest_data():
             return get_interest_details()
 
         df_yearly, df_currency, df_top = load_interest_data()
 
-        # Round numeric columns for clean display
         if not df_currency.empty:
             df_currency['total'] = df_currency['total'].round(0)
         if not df_top.empty:
@@ -623,7 +654,10 @@ if check_password():
         with col1:
             st.subheader("Interest by Year")
             if not df_yearly.empty:
-                st.bar_chart(df_yearly.set_index('year'))
+                fig = px.bar(df_yearly, x='year', y='total', color_discrete_sequence=[COLORS['primary']])
+                fig.update_layout(xaxis_title="", yaxis_title=BASE_CURRENCY, showlegend=False)
+                apply_plotly_theme(fig)
+                st.plotly_chart(fig, use_container_width=True)
 
         with col2:
             st.subheader("Interest by Currency")
@@ -659,13 +693,12 @@ if check_password():
     elif page == "Fees":
         st.title("💸 Fee Analysis")
 
-        @st.cache_data(ttl=300)
+        @st.cache_data(ttl=CACHE_TTL)
         def load_fee_data():
             return get_fee_details()
 
         df_yearly, df_currency, df_top = load_fee_data()
 
-        # Round numeric columns for clean display
         if not df_currency.empty:
             df_currency['total'] = df_currency['total'].round(0)
         if not df_top.empty:
@@ -679,7 +712,10 @@ if check_password():
         with col1:
             st.subheader("Fees by Year")
             if not df_yearly.empty:
-                st.bar_chart(df_yearly.set_index('year'), color="#e67e22")
+                fig = px.bar(df_yearly, x='year', y='total', color_discrete_sequence=[COLORS['warning']])
+                fig.update_layout(xaxis_title="", yaxis_title=BASE_CURRENCY, showlegend=False)
+                apply_plotly_theme(fig)
+                st.plotly_chart(fig, use_container_width=True)
 
         with col2:
             st.subheader("Fees by Currency")
@@ -711,48 +747,68 @@ if check_password():
 
         st.divider()
         st.subheader("Fee Efficiency by Broker")
+        st.caption(f"Cost per 100 {BASE_CURRENCY} traded (lower is better)")
 
         df_broker = get_fee_analysis()
         if not df_broker.empty:
-            # Round numeric columns
             df_broker['total_traded'] = df_broker['total_traded'].round(0)
             df_broker['total_fees'] = df_broker['total_fees'].round(0)
             df_broker['num_trades'] = df_broker['num_trades'].round(0)
 
-            st.dataframe(
-                df_broker,
-                column_config={
-                    "broker": st.column_config.TextColumn("Broker"),
-                    "total_traded": st.column_config.NumberColumn(f"Total Traded ({BASE_CURRENCY})", format="localized"),
-                    "total_fees": st.column_config.NumberColumn(f"Total Fees ({BASE_CURRENCY})", format="localized"),
-                    "fee_per_100": st.column_config.NumberColumn(f"Fee per 100 {BASE_CURRENCY}", format="%.4f"),
-                    "num_trades": st.column_config.NumberColumn("# Trades", format="localized"),
-                },
-                use_container_width=True,
-                hide_index=True
-            )
+            col1, col2 = st.columns([2, 1])
+
+            with col1:
+                st.dataframe(
+                    df_broker,
+                    column_config={
+                        "broker": st.column_config.TextColumn("Broker"),
+                        "total_traded": st.column_config.NumberColumn(f"Total Traded ({BASE_CURRENCY})", format="localized"),
+                        "total_fees": st.column_config.NumberColumn(f"Total Fees ({BASE_CURRENCY})", format="localized"),
+                        "fee_per_100": st.column_config.NumberColumn(f"Fee per 100 {BASE_CURRENCY}", format="%.4f"),
+                        "num_trades": st.column_config.NumberColumn("# Trades", format="localized"),
+                    },
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+            with col2:
+                fig = px.bar(df_broker, x='broker', y='fee_per_100',
+                             color_discrete_sequence=[COLORS['negative']])
+                fig.update_layout(xaxis_title="", yaxis_title=f"Fee per 100 {BASE_CURRENCY}", showlegend=False)
+                apply_plotly_theme(fig)
+                st.plotly_chart(fig, use_container_width=True)
 
         st.divider()
         st.subheader("Platform & Custody Fees")
+        st.caption("Monthly subscription/custody fees (not per-trade)")
 
         df_platform = get_platform_fees()
         if not df_platform.empty:
-            # Round numeric columns
             df_platform['total_fees'] = df_platform['total_fees'].round(0)
             df_platform['monthly_avg'] = df_platform['monthly_avg'].round(0)
             df_platform['num_charges'] = df_platform['num_charges'].round(0)
 
-            st.dataframe(
-                df_platform,
-                column_config={
-                    "broker": st.column_config.TextColumn("Broker"),
-                    "total_fees": st.column_config.NumberColumn(f"Total ({BASE_CURRENCY})", format="localized"),
-                    "monthly_avg": st.column_config.NumberColumn(f"Avg Monthly ({BASE_CURRENCY})", format="localized"),
-                    "num_charges": st.column_config.NumberColumn("# Charges", format="localized"),
-                },
-                use_container_width=True,
-                hide_index=True
-            )
+            col1, col2 = st.columns([2, 1])
+
+            with col1:
+                st.dataframe(
+                    df_platform,
+                    column_config={
+                        "broker": st.column_config.TextColumn("Broker"),
+                        "total_fees": st.column_config.NumberColumn(f"Total ({BASE_CURRENCY})", format="localized"),
+                        "monthly_avg": st.column_config.NumberColumn(f"Avg Monthly ({BASE_CURRENCY})", format="localized"),
+                        "num_charges": st.column_config.NumberColumn("# Charges", format="localized"),
+                    },
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+            with col2:
+                fig = px.bar(df_platform, x='broker', y='monthly_avg',
+                             color_discrete_sequence=[COLORS['purple']])
+                fig.update_layout(xaxis_title="", yaxis_title=f"Monthly Avg ({BASE_CURRENCY})", showlegend=False)
+                apply_plotly_theme(fig)
+                st.plotly_chart(fig, use_container_width=True)
 
     # ========================================
     # PAGE: ACTIVITY
@@ -765,7 +821,7 @@ if check_password():
             show_all = st.checkbox("Show All Transactions")
             num_txns = st.slider("Number of transactions", 10, 500, 50, disabled=show_all)
 
-        @st.cache_data(ttl=300)
+        @st.cache_data(ttl=CACHE_TTL)
         def load_activity_data(limit, all_txns):
             with get_db_connection() as conn:
                 query = """
@@ -797,7 +853,6 @@ if check_password():
 
         st.metric("Transactions Displayed", len(df))
 
-        # Round to 2 decimal places for Activity
         df['quantity'] = df['quantity'].round(2)
         df['price'] = df['price'].round(2)
         df['amount'] = df['amount'].round(2)
@@ -830,7 +885,7 @@ if check_password():
     elif page == "FX Analysis":
         st.title("💱 Currency Performance")
 
-        @st.cache_data(ttl=300)
+        @st.cache_data(ttl=CACHE_TTL)
         def load_fx_data():
             return get_fx_performance_detailed()
 
@@ -843,8 +898,8 @@ if check_password():
             total_unrealized = df['total_unrealized_pl'].sum()
 
             col1, col2, col3 = st.columns(3)
-            col1.metric("Total Realized FX P&L", format_local(total_realized))
-            col2.metric("Total Unrealized FX P&L", format_local(total_unrealized))
+            col1.metric("Realized FX P&L", format_local(total_realized))
+            col2.metric("Unrealized FX P&L", format_local(total_unrealized))
             col3.metric("Total FX P&L", format_local(total_realized + total_unrealized))
 
             st.divider()
@@ -856,7 +911,6 @@ if check_password():
             ]].copy()
             display_df['total_fx_pl'] = display_df['total_realized_pl'] + display_df['total_unrealized_pl']
 
-            # Round all numeric columns
             numeric_cols = ['realized_cash_pl', 'realized_securities_pl', 'total_realized_pl',
                            'unrealized_securities_pl', 'total_unrealized_pl', 'total_fx_pl']
             for col in numeric_cols:
@@ -881,17 +935,17 @@ if check_password():
     # PAGE: PERFORMANCE
     # ========================================
     elif page == "Performance":
-        st.title("📈 Portfolio Performance")
+        st.title("📊 Portfolio Performance")
 
-        @st.cache_data(ttl=300)
+        @st.cache_data(ttl=CACHE_TTL)
         def load_total_xirr():
             return get_total_xirr()
 
-        @st.cache_data(ttl=300)
+        @st.cache_data(ttl=CACHE_TTL)
         def load_yearly_equity():
             return get_yearly_equity_curve()
 
-        @st.cache_data(ttl=300)
+        @st.cache_data(ttl=CACHE_TTL)
         def load_yearly_contrib(year):
             return get_yearly_contribution(year)
 
@@ -905,7 +959,6 @@ if check_password():
             df_years, missing_prices = load_yearly_equity()
 
         if not df_years.empty:
-            # Round numeric columns for clean display
             df_years['start_equity'] = df_years['start_equity'].round(0)
             df_years['net_flow'] = df_years['net_flow'].round(0)
             df_years['end_equity'] = df_years['end_equity'].round(0)
@@ -917,7 +970,7 @@ if check_password():
                 x=df_years['year'],
                 y=df_years['end_equity'],
                 name='End Equity',
-                marker_color='lightblue',
+                marker_color=COLORS['primary'],
                 yaxis='y'
             ))
 
@@ -926,19 +979,18 @@ if check_password():
                 y=df_years['return_pct'],
                 name='Annual Return (%)',
                 mode='lines+markers',
-                line=dict(color='firebrick', width=3),
+                line=dict(color=COLORS['positive'], width=3),
                 yaxis='y2'
             ))
 
             fig.update_layout(
                 title='Yearly Equity & Returns',
-                xaxis=dict(title='Year'),
-                yaxis=dict(title='Equity', side='left', showgrid=False),
+                xaxis=dict(title=''),
+                yaxis=dict(title=f'Equity ({BASE_CURRENCY})', side='left', showgrid=False),
                 yaxis2=dict(title='Return (%)', side='right', overlaying='y', showgrid=True),
                 legend=dict(x=0.01, y=0.99),
-                hovermode="x unified"
             )
-
+            apply_plotly_theme(fig)
             st.plotly_chart(fig, use_container_width=True)
 
             st.subheader("Yearly Summary")
@@ -975,16 +1027,13 @@ if check_password():
                 st.metric(f"{selected_year} XIRR", f"{year_xirr:.2f}%")
 
                 if not df_contrib.empty:
-                    # Round numeric columns
                     df_contrib['SOY Value'] = df_contrib['SOY Value'].round(0)
                     df_contrib['Net Additions'] = df_contrib['Net Additions'].round(0)
                     df_contrib['EOY Value'] = df_contrib['EOY Value'].round(0)
                     df_contrib['Dividends'] = df_contrib['Dividends'].round(0)
                     df_contrib['Profit'] = df_contrib['Profit'].round(0)
 
-                    # Treemap of Contribution
                     df_tree = df_contrib[abs(df_contrib['Contribution %']) > 0.05].copy()
-                    df_tree['Positive'] = df_tree['Contribution %'] > 0
 
                     fig_tree = px.treemap(
                         df_tree,
@@ -993,8 +1042,9 @@ if check_password():
                         color='Contribution %',
                         color_continuous_scale='RdBu',
                         color_continuous_midpoint=0,
-                        title=f"Performance Contribution Breakdown ({selected_year})"
+                        title=f"Performance Contribution ({selected_year})"
                     )
+                    apply_plotly_theme(fig_tree)
                     st.plotly_chart(fig_tree, use_container_width=True)
 
                     st.dataframe(
@@ -1012,6 +1062,11 @@ if check_password():
                         use_container_width=True,
                         hide_index=True
                     )
+
+                    st.caption("""
+                    **Legend:** [Items in Brackets] = non-instrument totals (Fees, Interest, Tax).
+                    [Cash FX & Float] = P&L from uninvested cash or margin debt due to currency movements.
+                    """)
 
                     if missing_year:
                         with st.expander(f"Missing Prices for {selected_year}"):

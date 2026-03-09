@@ -1,41 +1,30 @@
 import sys
 from pathlib import Path
-# Add project root to sys.path
 root_path = str(Path(__file__).resolve().parent.parent.parent.parent)
 if root_path not in sys.path:
     sys.path.append(root_path)
 
 import streamlit as st
 import pandas as pd
+from kodak.dashboard.common import BASE_CURRENCY, page_setup, display_table, text_col, number_col
 from kodak.shared.db import get_connection
-from kodak.shared.utils import load_config
-from kodak.dashboard.style import apply_theme, page_header, styled_subheader
 
-# --- CONFIGURATION ---
-config = load_config()
-BASE_CURRENCY = config.get('base_currency', 'NOK')
+page_setup("System Status", "⚙️")
 
-st.set_page_config(page_title="System Status", page_icon="⚙️", layout="wide")
-apply_theme()
-
-page_header("System Status", "Configuration and data health")
-
-# --- 1. System Config ---
-styled_subheader("Configuration")
+# --- Config ---
+st.subheader("Configuration")
 st.info(f"**Base Currency:** {BASE_CURRENCY}")
 
-# --- 2. Data Freshness ---
-styled_subheader("Data Source Status")
+# --- Data Freshness ---
+st.subheader("Data Source Status")
+
 
 def get_data_freshness():
     conn = get_connection()
-
-    # Check Transactions table
     query = """
-        SELECT
-            source_file as Source,
-            MAX(date) as 'Last Transaction Date',
-            COUNT(*) as 'Total Transactions'
+        SELECT source_file as Source,
+               MAX(date) as 'Last Transaction Date',
+               COUNT(*) as 'Total Transactions'
         FROM transactions
         GROUP BY source_file
         ORDER BY MAX(date) DESC
@@ -44,37 +33,32 @@ def get_data_freshness():
     conn.close()
     return df
 
+
 df_freshness = get_data_freshness()
 
 if not df_freshness.empty:
-    st.dataframe(
-        df_freshness,
-        column_config={
-            "Source": st.column_config.TextColumn("Source File / Account"),
-            "Last Transaction Date": st.column_config.DateColumn("Latest Data", format="YYYY-MM-DD"),
-            "Total Transactions": st.column_config.NumberColumn("Record Count"),
-        },
-        use_container_width=True,
-        hide_index=True
-    )
+    display_table(df_freshness, {
+        "Source": text_col("Source File / Account"),
+        "Last Transaction Date": st.column_config.DateColumn("Latest Data", format="YYYY-MM-DD"),
+        "Total Transactions": number_col("Record Count"),
+    }, height=300)
 else:
     st.warning("No transactions found in the database.")
 
-# --- 3. Database Info (Optional) ---
+# --- DB Stats ---
 with st.expander("Database Statistics"):
     conn = get_connection()
     try:
         tables = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table';", conn)
-        st.write("Tables in database:", tables['name'].tolist())
-
-        # Row counts
         stats = []
         for table in tables['name']:
             count = pd.read_sql_query(f"SELECT COUNT(*) as c FROM {table}", conn).iloc[0]['c']
             stats.append({'Table': table, 'Rows': count})
 
-        st.dataframe(pd.DataFrame(stats), hide_index=True)
-
+        display_table(pd.DataFrame(stats), {
+            "Table": text_col("Table"),
+            "Rows": number_col("Rows"),
+        }, height=250)
     except Exception as e:
         st.error(f"Error fetching stats: {e}")
     finally:
