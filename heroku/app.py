@@ -417,30 +417,15 @@ if check_password():
         total_gain = data['market_value'] - data['cost_basis']
         total_return_pct = (data['market_value'] / data['cost_basis'] - 1) * 100 if data['cost_basis'] > 0 else 0
 
-        # Hero metric
-        st.markdown(
-            f"""
-            <div style="text-align:center; padding: 1.5rem 0 0.5rem;">
-                <span style="font-size:1rem; color:{COLORS['text_muted']};">Total Net Equity</span><br/>
-                <span style="font-size:2.8rem; font-weight:700; color:#FAFAFA;">{format_local(net_worth)}</span>
-                <span style="font-size:1rem; color:{COLORS['text_muted']};"> {BASE_CURRENCY}</span>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Net Equity", format_local(net_worth))
+        col2.metric("Stock Holdings", format_local(data['market_value']))
+        col3.metric("Cash & Margin", format_local(data['cash']), help="Negative = margin usage")
 
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Stock Holdings", format_local(data['market_value']))
-        col2.metric("Cash & Margin", format_local(data['cash']), help="Negative = margin usage")
-        col3.metric("Unrealized P&L", format_local(total_gain), f"{format_local(total_return_pct, 1)}%")
-        col4.metric("Cost Basis", format_local(data['cost_basis']))
-
-        st.divider()
-
-        col5, col6, col7 = st.columns(3)
-        col5.metric("Dividends", format_local(data['dividends']))
-        col6.metric("Interest Paid", format_local(data['interest']), delta_color="inverse")
-        col7.metric("Fees Paid", format_local(data['fees']), delta_color="inverse")
+        col4, col5, col6 = st.columns(3)
+        col4.metric("Unrealized P&L", format_local(total_gain), f"{format_local(total_return_pct, 1)}%")
+        col5.metric("Cost Basis", format_local(data['cost_basis']))
+        col6.metric("Dividends (All Time)", format_local(data['dividends']))
 
         st.divider()
 
