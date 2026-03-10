@@ -54,6 +54,8 @@ def _generate_static_api():
         # Holdings
         with get_db_connection() as conn:
             df_h = get_holdings()
+            import logging
+            logging.warning(f"Static API: get_holdings() returned {len(df_h)} rows")
             prices = pd.read_sql_query("""
                 SELECT mp.instrument_id, mp.close, i.currency, i.symbol, i.name,
                        i.sector, i.region, i.country, i.asset_class
@@ -63,6 +65,7 @@ def _generate_static_api():
                 )
             """, conn)
 
+        logging.warning(f"Static API: prices query returned {len(prices)} rows")
         pm = {r["instrument_id"]: r for _, r in prices.iterrows()}
         fx, rows, total = {}, [], 0
         for _, r in df_h.iterrows():
@@ -93,8 +96,9 @@ def _generate_static_api():
             "fees": round(float(income["fees"]), 2)}
         (static_dir / "summary.json").write_text(json.dumps(summary_payload, indent=2))
     except Exception as e:
-        import logging
-        logging.error(f"Static API generation failed: {e}", exc_info=True)
+        import logging, traceback
+        logging.error(f"Static API generation failed: {e}")
+        traceback.print_exc()
 
 _generate_static_api()
 
