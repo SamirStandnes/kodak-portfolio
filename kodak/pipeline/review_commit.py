@@ -7,6 +7,7 @@ from kodak.shared.utils import load_config
 logger = logging.getLogger(__name__)
 
 ACCOUNTS_MAP_PATH = os.path.join('data', 'reference', 'accounts_map.csv')
+ISIN_MAP_PATH = os.path.join('data', 'reference', 'isin_map.csv')
 
 
 def _append_placeholder_accounts(unknown_accs):
@@ -36,6 +37,42 @@ def _append_placeholder_accounts(unknown_accs):
             print(f"[+] Added {len(new_rows)} placeholder(s) to accounts_map.csv - please edit UNKNOWN values.")
     except Exception as e:
         logger.warning(f"Could not update accounts_map.csv: {e}")
+
+
+def _append_placeholder_instruments(df, unknown_isins):
+    """Append placeholder rows to isin_map.csv for new instruments."""
+    if not os.path.exists(ISIN_MAP_PATH):
+        logger.warning(f"ISIN map not found at {ISIN_MAP_PATH}")
+        return
+
+    try:
+        existing_df = pd.read_csv(ISIN_MAP_PATH)
+        existing_isins = set(existing_df['isin'].astype(str))
+
+        # Get symbol and currency from the staged data for each new ISIN
+        staged_instruments = df[df['isin'].isin(unknown_isins)][['isin', 'symbol', 'currency']].drop_duplicates('isin')
+
+        new_rows = []
+        for _, row in staged_instruments.iterrows():
+            if str(row['isin']) not in existing_isins:
+                new_rows.append({
+                    'isin': row['isin'],
+                    'symbol': row['symbol'] or 'UNKNOWN',
+                    'currency': row['currency'] or 'UNKNOWN',
+                    'sector': '',
+                    'region': 'Unknown',
+                    'country': '',
+                    'asset_class': 'Equity'
+                })
+
+        if new_rows:
+            new_df = pd.DataFrame(new_rows)
+            combined = pd.concat([existing_df, new_df], ignore_index=True)
+            combined.to_csv(ISIN_MAP_PATH, index=False)
+            for r in new_rows:
+                print(f"  [+] Added {r['isin']} ({r['symbol']}) to isin_map.csv - please update symbol/metadata.")
+    except Exception as e:
+        logger.warning(f"Could not update isin_map.csv: {e}")
 
 
 def review_and_commit():
@@ -97,6 +134,7 @@ def review_and_commit():
 
     if unknown_insts:
         print(f"\n[!] NOTICE: {len(unknown_insts)} New Instruments detected.")
+        _append_placeholder_instruments(df, unknown_insts)
 
     choice = input("\nCommit these transactions? (y/n/clear): ").lower().strip()
     
