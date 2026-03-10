@@ -92,8 +92,9 @@ def _generate_static_api():
             "interest": round(float(income["interest"]), 2),
             "fees": round(float(income["fees"]), 2)}
         (static_dir / "summary.json").write_text(json.dumps(summary_payload, indent=2))
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.error(f"Static API generation failed: {e}", exc_info=True)
 
 _generate_static_api()
 
