@@ -44,7 +44,7 @@ def _generate_static_api():
         from kodak.shared.calculations import get_holdings, get_income_and_costs
         from kodak.shared.market_data import get_exchange_rate
         from kodak.shared.utils import load_config
-        from kodak.shared.db import get_db_connection
+        from kodak.shared.db import get_db_connection, query_df
 
         cfg = load_config()
         base = cfg.get("base_currency", "NOK")
@@ -54,9 +54,7 @@ def _generate_static_api():
         # Holdings
         with get_db_connection() as conn:
             df_h = get_holdings()
-            import logging
-            logging.warning(f"Static API: get_holdings() returned {len(df_h)} rows")
-            prices = pd.read_sql_query("""
+            prices = query_df("""
                 SELECT mp.instrument_id, mp.close, i.currency, i.symbol, i.name,
                        i.sector, i.region, i.country, i.asset_class
                 FROM market_prices mp JOIN instruments i ON mp.instrument_id = i.id
@@ -64,8 +62,6 @@ def _generate_static_api():
                     SELECT instrument_id, MAX(date) FROM market_prices GROUP BY instrument_id
                 )
             """, conn)
-
-        logging.warning(f"Static API: prices query returned {len(prices)} rows")
         pm = {r["instrument_id"]: r for _, r in prices.iterrows()}
         fx, rows, total = {}, [], 0
         for _, r in df_h.iterrows():
@@ -121,10 +117,10 @@ if _qp.get("jarvis") == "1" and _qp.get("token") == os.environ.get("DASHBOARD_PA
     _resource = _qp.get("resource", "holdings")
 
     if _resource == "holdings":
-        from kodak.shared.db import get_db_connection
+        from kodak.shared.db import get_db_connection, query_df
         with get_db_connection() as _conn:
             _df_h = get_holdings()
-            _prices = pd.read_sql_query("""
+            _prices = query_df("""
                 SELECT mp.instrument_id, mp.close, i.currency, i.symbol, i.name,
                        i.sector, i.region, i.country, i.asset_class
                 FROM market_prices mp
@@ -242,7 +238,7 @@ if check_password():
     import plotly.express as px
     import plotly.graph_objects as go
 
-    from kodak.shared.db import get_db_connection
+    from kodak.shared.db import get_db_connection, query_df
     from kodak.shared.calculations import (
         get_holdings, get_income_and_costs,
         get_dividend_details, get_dividend_forecast,
@@ -355,12 +351,12 @@ if check_password():
             with get_db_connection() as conn:
                 df_holdings = get_holdings()
 
-                instruments = pd.read_sql_query('''
+                instruments = query_df('''
                     SELECT id, sector, region, country, asset_class
                     FROM instruments
                 ''', conn)
 
-                prices = pd.read_sql_query('''
+                prices = query_df('''
                     SELECT mp.instrument_id, mp.close, i.currency
                     FROM market_prices mp
                     JOIN instruments i ON mp.instrument_id = i.id
@@ -371,7 +367,7 @@ if check_password():
                     )
                 ''', conn)
 
-                total_cash_base = pd.read_sql_query(
+                total_cash_base = query_df(
                     "SELECT COALESCE(SUM(amount_local), 0) as total FROM transactions",
                     conn
                 ).iloc[0]['total']
@@ -460,7 +456,7 @@ if check_password():
             with get_db_connection() as conn:
                 df_holdings = get_holdings()
 
-                prices = pd.read_sql_query('''
+                prices = query_df('''
                     SELECT mp.instrument_id, mp.close, i.currency, i.symbol, i.name,
                            i.sector, i.region, i.country, i.asset_class
                     FROM market_prices mp
@@ -836,7 +832,7 @@ if check_password():
                 if not all_txns:
                     query += f" LIMIT {limit}"
 
-                df = pd.read_sql_query(query, conn)
+                df = query_df(query, conn)
             return df
 
         df = load_activity_data(num_txns, show_all)

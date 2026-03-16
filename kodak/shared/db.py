@@ -93,3 +93,16 @@ def execute_batch(query: str, params_list: List[tuple]) -> int:
         raise
     finally:
         conn.close()
+
+
+def query_df(query: str, conn, params=None):
+    """Execute SQL via cursor and return a pandas DataFrame."""
+    import pandas as pd
+    cursor = conn.cursor()
+    if params:
+        cursor.execute(query, params)
+    else:
+        cursor.execute(query)
+    columns = [desc[0] for desc in cursor.description]
+    data = cursor.fetchall()
+    return pd.DataFrame(data, columns=columns)

@@ -30,6 +30,7 @@ execute_query = db_adapter.execute_query
 execute_scalar = db_adapter.execute_scalar
 execute_non_query = db_adapter.execute_non_query
 execute_batch = db_adapter.execute_batch
+query_df = db_adapter.query_df
 
 load_config = config_adapter.load_config
 format_local = config_adapter.format_local

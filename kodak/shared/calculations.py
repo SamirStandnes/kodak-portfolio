@@ -3,7 +3,7 @@ import numpy as np
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Any
 
-from kodak.shared.db import get_connection, get_db_connection, execute_query
+from kodak.shared.db import get_connection, get_db_connection, execute_query, query_df
 from kodak.shared.market_data import get_historical_prices_by_date, get_forward_dividends, get_exchange_rate
 from kodak.shared.utils import load_config
 
@@ -32,7 +32,7 @@ def get_internal_splits() -> Dict[str, List[Tuple[pd.Timestamp, float]]]:
         ORDER BY t.date, i.symbol
     """
     with get_db_connection() as conn:
-        df = pd.read_sql_query(query, conn)
+        df = query_df(query, conn)
 
     splits = {}
     # Group by date and symbol to find the IN/OUT pairs
@@ -171,7 +171,7 @@ def get_yearly_contribution(target_year: str) -> Tuple[pd.DataFrame, float, List
         ORDER BY t.date, t.id
     """
     with get_db_connection() as conn:
-        df = pd.read_sql(query, conn, params=(f"{target_year}-12-31",))
+        df = query_df(query, conn, params=(f"{target_year}-12-31",))
     if df.empty: return pd.DataFrame(), 0.0
     
     soy_date = f"{int(target_year)-1}-12-31"
@@ -329,7 +329,7 @@ def get_yearly_equity_curve() -> Tuple[pd.DataFrame, List[Dict[str, Any]]]:
         ORDER BY t.date, t.id
     """
     with get_db_connection() as conn:
-        df = pd.read_sql_query(query, conn)
+        df = query_df(query, conn)
     if df.empty: return pd.DataFrame()
     df['year'] = df['date'].str[:4]; years = sorted(df['year'].unique())
     split_map = get_internal_splits()
@@ -407,7 +407,7 @@ def get_holdings(date: Optional[str] = None) -> pd.DataFrame:
         ORDER BY t.instrument_id, t.date
     """
     with get_db_connection() as conn:
-        df = pd.read_sql(query, conn, params=params)
+        df = query_df(query, conn, params=tuple(params) if params else None)
     if df.empty: return pd.DataFrame()
     final_holdings = []
     for inst_id, group in df.groupby('instrument_id'):
@@ -465,7 +465,7 @@ def get_fee_analysis() -> pd.DataFrame:
         WHERE t.type IN ('BUY', 'SELL')
     """
     with get_db_connection() as conn:
-        df = pd.read_sql_query(query, conn)
+        df = query_df(query, conn)
 
     if df.empty:
         return pd.DataFrame(columns=['broker', 'total_traded', 'total_fees', 'fee_per_100', 'num_trades'])
@@ -502,7 +502,7 @@ def get_platform_fees() -> pd.DataFrame:
         WHERE t.type = 'FEE'
     """
     with get_db_connection() as conn:
-        df = pd.read_sql_query(query, conn)
+        df = query_df(query, conn)
 
     if df.empty:
         return pd.DataFrame(columns=['broker', 'total_fees', 'monthly_avg', 'num_charges'])
@@ -528,7 +528,7 @@ def get_platform_fees() -> pd.DataFrame:
 
 def get_total_xirr() -> float:
     with get_db_connection() as conn:
-        df = pd.read_sql_query("SELECT date, type, amount_local FROM transactions", conn)
+        df = query_df("SELECT date, type, amount_local FROM transactions", conn)
     if df.empty: return 0.0
     # 1. External Flows (Portfolio Level)
     flow_txns = df[df['type'].isin(EXTERNAL_FLOW_TYPES)].copy()
@@ -560,7 +560,7 @@ def get_dividend_details():
 
     with get_db_connection() as conn:
         # 1. Yearly
-        df_yearly = pd.read_sql_query("""
+        df_yearly = query_df("""
             SELECT
                 strftime('%Y', date) as year,
                 SUM(amount_local) as total
@@ -571,7 +571,7 @@ def get_dividend_details():
         """, conn)
 
         # 2. By Ticker (Current Year)
-        df_current_year = pd.read_sql_query("""
+        df_current_year = query_df("""
             SELECT
                 COALESCE(i.symbol, i.isin) as symbol,
                 SUM(t.amount_local) as total
@@ -583,7 +583,7 @@ def get_dividend_details():
         """, conn, params=(f"{current_year}%",))
 
         # 3. By Ticker (All Time)
-        df_all_time = pd.read_sql_query("""
+        df_all_time = query_df("""
             SELECT
                 COALESCE(i.symbol, i.isin) as symbol,
                 SUM(t.amount_local) as total
@@ -633,7 +633,7 @@ def get_dividend_forecast() -> Tuple[pd.DataFrame, Dict[str, Any]]:
 
     # Get TTM dividends from transaction history as fallback
     with get_db_connection() as conn:
-        ttm_df = pd.read_sql_query("""
+        ttm_df = query_df("""
             SELECT
                 i.symbol,
                 i.currency,
@@ -650,7 +650,7 @@ def get_dividend_forecast() -> Tuple[pd.DataFrame, Dict[str, Any]]:
 
     # Get instrument currencies from DB
     with get_db_connection() as conn:
-        currencies_df = pd.read_sql_query(
+        currencies_df = query_df(
             "SELECT symbol, currency FROM instruments WHERE symbol IS NOT NULL", conn)
     currency_map = dict(zip(currencies_df['symbol'], currencies_df['currency']))
 
@@ -731,7 +731,7 @@ def get_interest_details():
     """
     with get_db_connection() as conn:
         # 1. Yearly
-        df_yearly = pd.read_sql_query("""
+        df_yearly = query_df("""
             SELECT
                 strftime('%Y', date) as year,
                 SUM(ABS(amount_local)) as total
@@ -742,7 +742,7 @@ def get_interest_details():
         """, conn)
 
         # 2. By Currency
-        df_currency = pd.read_sql_query("""
+        df_currency = query_df("""
             SELECT
                 currency,
                 SUM(ABS(amount_local)) as total
@@ -753,7 +753,7 @@ def get_interest_details():
         """, conn)
 
         # 3. Recent Payments
-        df_top = pd.read_sql_query("""
+        df_top = query_df("""
             SELECT
                 date,
                 currency,
@@ -777,7 +777,7 @@ def get_fee_details():
     """
     with get_db_connection() as conn:
         # 1. Yearly
-        df_yearly = pd.read_sql_query("""
+        df_yearly = query_df("""
             SELECT
                 strftime('%Y', date) as year,
                 SUM(
@@ -793,7 +793,7 @@ def get_fee_details():
         """, conn)
 
         # 2. By Currency
-        df_currency = pd.read_sql_query("""
+        df_currency = query_df("""
             SELECT
                 currency,
                 SUM(
@@ -809,7 +809,7 @@ def get_fee_details():
         """, conn)
 
         # 3. Recent Fees
-        df_top = pd.read_sql_query("""
+        df_top = query_df("""
             SELECT
                 date,
                 currency,
@@ -846,7 +846,7 @@ def get_fx_performance():
     """
 
     with get_db_connection() as conn:
-        df = pd.read_sql_query(query, conn)
+        df = query_df(query, conn)
 
     if df.empty:
         return pd.DataFrame()
@@ -929,7 +929,7 @@ def get_fx_performance_detailed():
     """
 
     with get_db_connection() as conn:
-        df = pd.read_sql_query(query, conn)
+        df = query_df(query, conn)
 
     if df.empty:
         return pd.DataFrame()
@@ -1040,7 +1040,7 @@ def get_fx_performance_detailed():
 
     if not holdings_df.empty:
         with get_db_connection() as conn:
-            inst_currencies = pd.read_sql_query("SELECT id, currency FROM instruments", conn)
+            inst_currencies = query_df("SELECT id, currency FROM instruments", conn)
         inst_currency_map = dict(zip(inst_currencies['id'], inst_currencies['currency']))
         prices = get_latest_prices(holdings_df['instrument_id'].tolist())
 
@@ -1118,7 +1118,7 @@ def get_realized_performance():
         ORDER BY t.date, t.id
     '''
     with get_db_connection() as conn:
-        df = pd.read_sql_query(query, conn)
+        df = query_df(query, conn)
 
     if df.empty:
         return pd.DataFrame()
