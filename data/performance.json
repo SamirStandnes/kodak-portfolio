@@ -1,0 +1,37 @@
+{
+  "years": [
+    {
+      "year": "2019",
+      "return_pct": -25.2
+    },
+    {
+      "year": "2020",
+      "return_pct": 34.5
+    },
+    {
+      "year": "2021",
+      "return_pct": 14.5
+    },
+    {
+      "year": "2022",
+      "return_pct": -12.5
+    },
+    {
+      "year": "2023",
+      "return_pct": 25.4
+    },
+    {
+      "year": "2024",
+      "return_pct": 34.5
+    },
+    {
+      "year": "2025",
+      "return_pct": 22.0
+    },
+    {
+      "year": "2026",
+      "return_pct": 33.3
+    }
+  ],
+  "total_xirr": 21.9
+}
