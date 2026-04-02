@@ -96,10 +96,32 @@ def run_ingestion():
             h2 = generate_txn_hash(row['date'], row['acc_ext'], row['type'], isin, amt_local)
             existing_h2_hashes.add(h2)
 
-    # 4. Filter & Stage
+    # 4. Deduplicate within incoming batch (across files)
+    # When multiple files cover overlapping periods, the same transaction can
+    # appear in more than one file. Build per-hash counts from each source file
+    # and take the max across files (not the sum) as the true incoming count.
+    per_file_h1 = {}  # source_file -> Counter of h1 hashes
+    for item in all_rows:
+        isin = item['isin'] if item['isin'] else ''
+        h1 = generate_txn_hash(item['date'], item['account_external_id'], item['type'], isin, item['amount'])
+        src = item.get('source_file', '')
+        if src not in per_file_h1:
+            per_file_h1[src] = Counter()
+        per_file_h1[src][h1] += 1
+
+    # Max count of each hash across any single file = true expected multiplicity
+    all_h1_hashes = set()
+    for c in per_file_h1.values():
+        all_h1_hashes.update(c.keys())
+    max_incoming_h1 = {}
+    for h1 in all_h1_hashes:
+        max_incoming_h1[h1] = max(c.get(h1, 0) for c in per_file_h1.values())
+
+    # 5. Filter & Stage
     to_stage = []
     skipped_existing = 0
-    incoming_h1_counts = Counter()
+    skipped_batch_dup = 0
+    staged_h1_counts = Counter()
 
     for item in all_rows:
         isin = item['isin'] if item['isin'] else ''
@@ -109,11 +131,18 @@ def run_ingestion():
         h1 = generate_txn_hash(item['date'], item['account_external_id'], item['type'], isin, amt)
         h2 = generate_txn_hash(item['date'], item['account_external_id'], item['type'], isin, amt_local) if amt_local else None
 
-        incoming_h1_counts[h1] += 1
+        staged_h1_counts[h1] += 1
 
-        # Count-aware check: if file has N rows with this hash and DB has M,
-        # skip the first M occurrences (already in DB) and keep the rest
-        if incoming_h1_counts[h1] <= existing_h1_counts.get(h1, 0):
+        # Total allowed = max occurrences in any single file
+        allowed = max_incoming_h1.get(h1, 1)
+
+        # Skip if we've already seen enough of this hash (cross-file dedup)
+        if staged_h1_counts[h1] > allowed:
+            skipped_batch_dup += 1
+            continue
+
+        # Skip if already in DB (count-aware)
+        if staged_h1_counts[h1] <= existing_h1_counts.get(h1, 0):
             skipped_existing += 1
             continue
 
@@ -126,7 +155,7 @@ def run_ingestion():
         item['batch_id'] = batch_id
         to_stage.append(item)
 
-    logging.info(f"Staging {len(to_stage)} transactions (Skipped {skipped_existing} existing).")
+    logging.info(f"Staging {len(to_stage)} transactions (Skipped {skipped_existing} existing, {skipped_batch_dup} batch duplicates).")
     
     if not to_stage:
         return

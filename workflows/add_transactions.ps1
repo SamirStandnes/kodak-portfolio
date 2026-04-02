@@ -1,6 +1,8 @@
 # add_transactions.ps1
 # Full pipeline to ingest, commit, and enrich new transactions.
 
+param([switch]$y)
+
 $ErrorActionPreference = "Stop"
 Write-Host "--- Kodak Portfolio: Add Transactions ---" -ForegroundColor Cyan
 
@@ -17,7 +19,12 @@ if ($StagingCount -eq 0) {
 }
 
 Write-Host "`n[2/6] Found $StagingCount transactions in staging." -ForegroundColor Cyan
-$confirmation = Read-Host "Do you want to review and COMMIT these transactions now? (y/n)"
+
+if ($y) {
+    $confirmation = 'y'
+} else {
+    $confirmation = Read-Host "Do you want to review and COMMIT these transactions now? (y/n)"
+}
 
 if ($confirmation -eq 'y') {
     # 3. Commit

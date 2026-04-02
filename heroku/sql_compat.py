@@ -157,6 +157,18 @@ def fix_group_by_joined_columns(query: str) -> str:
         re.IGNORECASE
     )
 
+    # Skip if the GROUP BY is inside a subquery (parentheses)
+    if group_by_match:
+        pos = group_by_match.start()
+        depth = 0
+        for ch in query[:pos]:
+            if ch == '(':
+                depth += 1
+            elif ch == ')':
+                depth -= 1
+        if depth > 0:
+            return query
+
     if not select_match or not group_by_match:
         return query
 
