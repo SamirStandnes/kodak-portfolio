@@ -441,19 +441,17 @@ if check_password():
                 apply_plotly_theme(fig)
                 return fig
 
-            acol1, acol2 = st.columns(2)
-            with acol1:
+            tab1, tab2, tab3, tab4, tab5 = st.tabs(["Sector", "Region", "Currency", "Asset Class", "Country"])
+            with tab1:
                 st.plotly_chart(make_pie(df_alloc, 'Sector', 'By Sector'), use_container_width=True)
-            with acol2:
+            with tab2:
                 st.plotly_chart(make_pie(df_alloc, 'Region', 'By Region'), use_container_width=True)
-
-            bcol1, bcol2 = st.columns(2)
-            with bcol1:
+            with tab3:
                 st.plotly_chart(make_pie(df_alloc, 'Currency', 'By Currency'), use_container_width=True)
-            with bcol2:
+            with tab4:
                 st.plotly_chart(make_pie(df_alloc, 'Asset Class', 'By Asset Class'), use_container_width=True)
-
-            st.plotly_chart(make_pie(df_alloc, 'Country', 'By Country'), use_container_width=True)
+            with tab5:
+                st.plotly_chart(make_pie(df_alloc, 'Country', 'By Country'), use_container_width=True)
 
     # ========================================
     # PAGE: HOLDINGS

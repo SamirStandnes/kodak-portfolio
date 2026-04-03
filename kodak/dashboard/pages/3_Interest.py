@@ -22,31 +22,39 @@ def load_interest_data():
 
 df_yearly, df_currency, df_top = load_interest_data()
 
-total_interest = df_yearly['total'].sum()
-st.metric("Total Interest Paid (All Time)", format_local(total_interest))
+# --- KEY METRICS ---
+total_interest = df_yearly['total'].sum() if not df_yearly.empty else 0
+num_currencies = len(df_currency) if not df_currency.empty else 0
 
 col1, col2 = st.columns(2)
+col1.metric("Total Interest Paid (All Time)", format_local(total_interest))
+col2.metric("Currencies", num_currencies)
 
-with col1:
-    st.subheader("Interest by Year")
-    if not df_yearly.empty:
-        fig = px.bar(df_yearly, x='year', y='total', color_discrete_sequence=[COLORS['primary']])
-        fig.update_layout(xaxis_title="", yaxis_title=BASE_CURRENCY, showlegend=False)
-        apply_plotly_theme(fig)
-        st.plotly_chart(fig, use_container_width=True)
+st.divider()
 
-with col2:
-    st.subheader("Interest by Currency")
-    display_table(df_currency, {
-        "currency": text_col("Currency"),
-        "total": number_col(f"Total Interest ({BASE_CURRENCY})"),
-    }, height=250)
+# --- TABS ---
+tab1, tab2 = st.tabs(["Yearly Overview", "Recent Payments"])
 
-st.subheader("Recent Interest Payments")
-display_table(df_top, {
-    "date": date_col(),
-    "currency": text_col("Curr"),
-    "amount": number_col("Amount (Orig)"),
-    "amount_local": number_col(f"Amount ({BASE_CURRENCY})"),
-    "source_file": text_col("Source"),
-}, height=400)
+with tab1:
+    tcol1, tcol2 = st.columns([2, 1])
+    with tcol1:
+        if not df_yearly.empty:
+            fig = px.bar(df_yearly, x='year', y='total', color_discrete_sequence=[COLORS['primary']])
+            fig.update_layout(xaxis_title="", yaxis_title=BASE_CURRENCY, showlegend=False)
+            apply_plotly_theme(fig)
+            st.plotly_chart(fig, use_container_width=True)
+    with tcol2:
+        st.caption("By Currency")
+        display_table(df_currency, {
+            "currency": text_col("Currency"),
+            "total": number_col(f"Total ({BASE_CURRENCY})"),
+        }, height=250)
+
+with tab2:
+    display_table(df_top, {
+        "date": date_col(),
+        "currency": text_col("Curr"),
+        "amount": number_col("Amount (Orig)"),
+        "amount_local": number_col(f"Amount ({BASE_CURRENCY})"),
+        "source_file": text_col("Source"),
+    }, height=400)

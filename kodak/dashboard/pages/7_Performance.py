@@ -6,7 +6,6 @@ if root_path not in sys.path:
 
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from kodak.dashboard.common import (
@@ -67,82 +66,6 @@ if not df_years.empty:
     )
     apply_plotly_theme(fig)
     st.plotly_chart(fig, use_container_width=True)
-
-    # --- Cumulative Equity Curve ---
-    st.subheader("Cumulative Equity Curve")
-    fig_curve = go.Figure()
-    fig_curve.add_trace(go.Scatter(
-        x=df_years['year'], y=df_years['end_equity'],
-        mode='lines+markers+text',
-        fill='tozeroy',
-        fillcolor='rgba(74, 144, 217, 0.15)',
-        line=dict(color=COLORS['primary'], width=3),
-        text=[format_local(v) for v in df_years['end_equity']],
-        textposition='top center',
-        textfont=dict(size=10),
-    ))
-    fig_curve.update_layout(
-        xaxis_title='', yaxis_title=f'Portfolio Value ({BASE_CURRENCY})',
-    )
-    apply_plotly_theme(fig_curve)
-    st.plotly_chart(fig_curve, use_container_width=True)
-
-    # --- Drawdown Chart ---
-    st.subheader("Drawdown from Peak")
-    peak = df_years['end_equity'].cummax()
-    drawdown_pct = ((df_years['end_equity'] - peak) / peak * 100).fillna(0)
-
-    fig_dd = go.Figure()
-    fig_dd.add_trace(go.Bar(
-        x=df_years['year'], y=drawdown_pct,
-        marker_color=COLORS['negative'],
-    ))
-    fig_dd.update_layout(
-        yaxis_title='Drawdown (%)',
-        xaxis_title='',
-    )
-    apply_plotly_theme(fig_dd)
-    st.plotly_chart(fig_dd, use_container_width=True)
-
-    # --- Monthly Returns Heatmap ---
-    st.subheader("Monthly Returns Heatmap")
-    st.caption("Based on yearly XIRR spread evenly across months (monthly data requires daily pricing)")
-
-    # Build a monthly grid from yearly returns
-    months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-              'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-    years_list = df_years['year'].tolist()
-    heatmap_data = []
-    for _, row in df_years.iterrows():
-        annual_return = row['return_pct']
-        # Convert annual to approx monthly
-        monthly_return = ((1 + annual_return / 100) ** (1 / 12) - 1) * 100
-        for m in months:
-            heatmap_data.append({
-                'Year': row['year'], 'Month': m, 'Return %': round(monthly_return, 2)
-            })
-
-    df_heatmap = pd.DataFrame(heatmap_data)
-    pivot = df_heatmap.pivot(index='Year', columns='Month', values='Return %')
-    pivot = pivot[months]  # ensure month order
-
-    fig_heat = px.imshow(
-        pivot.values,
-        x=months,
-        y=pivot.index.tolist(),
-        color_continuous_scale='RdBu',
-        color_continuous_midpoint=0,
-        aspect='auto',
-        text_auto='.1f',
-    )
-    fig_heat.update_layout(
-        xaxis_title='', yaxis_title='',
-        yaxis=dict(autorange='reversed'),
-    )
-    apply_plotly_theme(fig_heat)
-    st.plotly_chart(fig_heat, use_container_width=True)
-
-    st.divider()
 
     st.subheader("Yearly Summary")
     display_table(df_years, {
