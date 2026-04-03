@@ -6,9 +6,10 @@ if root_path not in sys.path:
 
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 from kodak.dashboard.common import (
-    BASE_CURRENCY, CACHE_TTL, page_setup, format_local,
-    display_table, number_col, convert_to_base,
+    BASE_CURRENCY, CACHE_TTL, COLORS, page_setup, format_local,
+    display_table, number_col, apply_plotly_theme, convert_to_base,
 )
 from kodak.shared.db import get_connection
 from kodak.shared.calculations import get_holdings
@@ -75,13 +76,42 @@ def load_holdings_data():
     df = pd.DataFrame(data)
     if not df.empty:
         df['Weight %'] = (df['Market Value'] / total_val) * 100
-    return df.sort_values('Market Value', ascending=False)
+    return df.sort_values('Market Value', ascending=False), total_val
 
 
-df = load_holdings_data()
+df, total_val = load_holdings_data()
 
-st.metric("Total Equity Value", format_local(df['Market Value'].sum()))
+# --- KEY METRICS ---
+col1, col2, col3 = st.columns(3)
+col1.metric("Total Equity Value", format_local(df['Market Value'].sum()))
 
+if not df.empty:
+    top5_val = df.head(5)['Market Value'].sum()
+    top5_pct = (top5_val / total_val) * 100 if total_val > 0 else 0
+    col2.metric("Top 5 Concentration", f"{top5_pct:.1f}%",
+                help="Percentage of portfolio in your 5 largest positions")
+    col3.metric("Positions", len(df))
+
+st.divider()
+
+# --- CONCENTRATION BAR ---
+if not df.empty:
+    st.subheader("Position Sizes")
+    df_bar = df.head(15).copy()
+    fig = px.bar(
+        df_bar, x='Market Value', y='Symbol', orientation='h',
+        color='Return %',
+        color_continuous_scale=['#E74C3C', '#95A5A6', '#27AE60'],
+        color_continuous_midpoint=0,
+    )
+    fig.update_layout(yaxis=dict(autorange='reversed'), xaxis_title=f'Market Value ({BASE_CURRENCY})')
+    apply_plotly_theme(fig)
+    st.plotly_chart(fig, use_container_width=True)
+
+st.divider()
+
+# --- HOLDINGS TABLE ---
+st.subheader("All Holdings")
 display_table(df, {
     "Quantity": number_col("Quantity"),
     "Market Value": number_col(f"Market Value ({BASE_CURRENCY})"),

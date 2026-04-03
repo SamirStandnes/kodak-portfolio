@@ -352,7 +352,7 @@ if check_password():
                 df_holdings = get_holdings()
 
                 instruments = query_df('''
-                    SELECT id, sector, region, country, asset_class
+                    SELECT id, sector, region, country, asset_class, currency
                     FROM instruments
                 ''', conn)
 
@@ -397,7 +397,9 @@ if check_password():
                         'Market Value': val,
                         'Sector': meta.get('sector') or 'Unknown',
                         'Region': meta.get('region') or 'Unknown',
-                        'Asset Class': meta.get('asset_class') or 'Equity'
+                        'Country': meta.get('country') or 'Unknown',
+                        'Asset Class': meta.get('asset_class') or 'Equity',
+                        'Currency': meta.get('currency') or 'Unknown',
                     })
 
             income = get_income_and_costs()
@@ -433,17 +435,25 @@ if check_password():
         st.subheader("Portfolio Allocation")
         df_alloc = data['allocation']
         if not df_alloc.empty:
+            def make_pie(df, col, title):
+                fig = px.pie(df, values='Market Value', names=col, title=title,
+                             color_discrete_sequence=PALETTE, hole=0.4)
+                apply_plotly_theme(fig)
+                return fig
+
             acol1, acol2 = st.columns(2)
             with acol1:
-                fig_sector = px.pie(df_alloc, values='Market Value', names='Sector',
-                                    title='By Sector', color_discrete_sequence=PALETTE, hole=0.4)
-                apply_plotly_theme(fig_sector)
-                st.plotly_chart(fig_sector, use_container_width=True)
+                st.plotly_chart(make_pie(df_alloc, 'Sector', 'By Sector'), use_container_width=True)
             with acol2:
-                fig_region = px.pie(df_alloc, values='Market Value', names='Region',
-                                    title='By Region', color_discrete_sequence=PALETTE, hole=0.4)
-                apply_plotly_theme(fig_region)
-                st.plotly_chart(fig_region, use_container_width=True)
+                st.plotly_chart(make_pie(df_alloc, 'Region', 'By Region'), use_container_width=True)
+
+            bcol1, bcol2 = st.columns(2)
+            with bcol1:
+                st.plotly_chart(make_pie(df_alloc, 'Currency', 'By Currency'), use_container_width=True)
+            with bcol2:
+                st.plotly_chart(make_pie(df_alloc, 'Asset Class', 'By Asset Class'), use_container_width=True)
+
+            st.plotly_chart(make_pie(df_alloc, 'Country', 'By Country'), use_container_width=True)
 
     # ========================================
     # PAGE: HOLDINGS

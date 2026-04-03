@@ -24,7 +24,7 @@ def load_summary_data():
     df_holdings = get_holdings()
 
     instruments = pd.read_sql_query(
-        'SELECT id, sector, region, country, asset_class FROM instruments', conn
+        'SELECT id, sector, region, country, asset_class, currency FROM instruments', conn
     )
     prices = pd.read_sql_query('''
         SELECT mp.instrument_id, mp.close, i.currency
@@ -59,7 +59,9 @@ def load_summary_data():
                 'Market Value': val,
                 'Sector': meta.get('sector') or 'Unknown',
                 'Region': meta.get('region') or 'Unknown',
+                'Country': meta.get('country') or 'Unknown',
                 'Asset Class': meta.get('asset_class') or 'Equity',
+                'Currency': meta.get('currency') or 'Unknown',
             })
 
     total_cash_base = pd.read_sql_query(
@@ -104,21 +106,27 @@ st.subheader("Portfolio Allocation")
 df_alloc = data['allocation']
 
 if not df_alloc.empty:
-    acol1, acol2 = st.columns(2)
-
     palette = [COLORS['primary'], COLORS['positive'], COLORS['warning'],
                COLORS['purple'], COLORS['light_blue'], COLORS['negative'], COLORS['neutral']]
 
-    with acol1:
-        fig_sector = px.pie(df_alloc, values='Market Value', names='Sector', title='By Sector',
-                            color_discrete_sequence=palette, hole=0.4)
-        apply_plotly_theme(fig_sector)
-        st.plotly_chart(fig_sector, use_container_width=True)
+    def make_pie(df, col, title):
+        fig = px.pie(df, values='Market Value', names=col, title=title,
+                     color_discrete_sequence=palette, hole=0.4)
+        apply_plotly_theme(fig)
+        return fig
 
-    with acol2:
-        fig_region = px.pie(df_alloc, values='Market Value', names='Region', title='By Region',
-                            color_discrete_sequence=palette, hole=0.4)
-        apply_plotly_theme(fig_region)
-        st.plotly_chart(fig_region, use_container_width=True)
+    row1_col1, row1_col2 = st.columns(2)
+    with row1_col1:
+        st.plotly_chart(make_pie(df_alloc, 'Sector', 'By Sector'), use_container_width=True)
+    with row1_col2:
+        st.plotly_chart(make_pie(df_alloc, 'Region', 'By Region'), use_container_width=True)
+
+    row2_col1, row2_col2 = st.columns(2)
+    with row2_col1:
+        st.plotly_chart(make_pie(df_alloc, 'Currency', 'By Currency'), use_container_width=True)
+    with row2_col2:
+        st.plotly_chart(make_pie(df_alloc, 'Asset Class', 'By Asset Class'), use_container_width=True)
+
+    st.plotly_chart(make_pie(df_alloc, 'Country', 'By Country'), use_container_width=True)
 else:
     st.info("No allocation data available.")
