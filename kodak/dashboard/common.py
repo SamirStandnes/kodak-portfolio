@@ -1,18 +1,16 @@
 """Shared dashboard setup — eliminates boilerplate across pages."""
 
 import sys
+import os
 from pathlib import Path
 
 
 def setup_path():
     """Add project root to sys.path. Call at top of every page."""
-    # From kodak/dashboard/ → project root is 2 levels up
-    # From kodak/dashboard/pages/ → project root is 3 levels up
     import inspect
     caller_file = inspect.stack()[1].filename
     caller_path = Path(caller_file).resolve()
 
-    # Walk up until we find config.yaml (project root)
     for parent in caller_path.parents:
         if (parent / "config.yaml").exists():
             root = str(parent)
@@ -20,7 +18,6 @@ def setup_path():
                 sys.path.append(root)
             return root
 
-    # Fallback: assume 3 levels up from caller
     root = str(caller_path.parent.parent.parent)
     if root not in sys.path:
         sys.path.append(root)
@@ -30,6 +27,10 @@ def setup_path():
 # Run on import so pages just need: from kodak.dashboard.common import *
 _project_root = setup_path()
 
+# Auto-detect Heroku: load PostgreSQL adapters before any kodak imports
+_IS_HEROKU = bool(os.environ.get("DATABASE_URL"))
+if _IS_HEROKU:
+    import heroku.setup_adapters  # noqa: F401
 
 import streamlit as st
 import plotly.graph_objects as go
@@ -41,8 +42,45 @@ config = load_config()
 BASE_CURRENCY = config.get('base_currency', 'NOK')
 
 
+def _check_auth():
+    """Password gate for Heroku. No-op locally (no DASHBOARD_PASSWORD set)."""
+    password = os.environ.get("DASHBOARD_PASSWORD")
+    if not password:
+        return  # Local mode — no auth
+
+    if st.session_state.get("password_correct"):
+        return  # Already authenticated
+
+    st.set_page_config(page_title="Kodak Portfolio", page_icon="📈", layout="centered")
+    st.markdown("""
+        <style>
+        #MainMenu, header, footer {visibility: hidden;}
+        .block-container { max-width: 420px; padding-top: 8vh; }
+        [data-testid="InputInstructions"] { display: none !important; }
+        .stForm [data-testid="stFormSubmitButton"] button { width: 100%; }
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.title("Kodak Portfolio")
+    st.caption("Enter your password to continue")
+
+    with st.form("login_form"):
+        pwd = st.text_input("Password", type="password", label_visibility="collapsed", placeholder="Password")
+        submitted = st.form_submit_button("Log in", use_container_width=True, type="primary")
+
+    if submitted:
+        if pwd == password:
+            st.session_state["password_correct"] = True
+            st.rerun()
+        else:
+            st.error("Incorrect password. Please try again.")
+
+    st.stop()
+
+
 def page_setup(title: str, icon: str):
     """Standard page config + title. Call once per page."""
+    _check_auth()
     st.set_page_config(page_title=title, page_icon=icon, layout="wide")
     st.title(f"{icon} {title}")
 

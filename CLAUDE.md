@@ -75,6 +75,50 @@ Defined in `config.yaml` under `transaction_types`. Three categories:
 
 Parsers must set `currency` to the **asset's** currency, not the settlement currency. Back-calculate `amount` from `amount_local` if needed.
 
+## Heroku Deployment
+
+The same codebase runs both locally (SQLite) and on Heroku (PostgreSQL). Detection is automatic via the `DATABASE_URL` environment variable.
+
+### How It Works
+
+1. **`kodak/dashboard/common.py`** detects `DATABASE_URL` at import time
+2. If present, it imports `heroku/setup_adapters.py` which monkey-patches `sys.modules`:
+   - `kodak.shared.db` → `heroku/db_adapter.py` (PostgreSQL via psycopg2)
+   - `kodak.shared.utils` → `heroku/config_adapter.py` (env vars instead of config.yaml)
+3. All downstream imports get the adapter versions automatically
+4. `heroku/sql_compat.py` translates SQLite SQL → PostgreSQL (strftime→TO_CHAR, ? → %s, etc.)
+
+### Key Files
+
+- **`heroku/setup_adapters.py`** — Module patching (must load before any kodak imports)
+- **`heroku/db_adapter.py`** — PostgreSQL connection adapter (same API as `kodak/shared/db.py`)
+- **`heroku/config_adapter.py`** — Config from env vars (replaces `config.yaml`)
+- **`heroku/sql_compat.py`** — SQL translation layer (301 lines)
+- **`heroku/scripts/migrate_db.py`** — One-way SQLite → PostgreSQL migration
+- **`heroku/scripts/update_prices.py`** — Daily price updater (Heroku Scheduler)
+
+### Heroku-Only Features
+
+- **Password auth**: `DASHBOARD_PASSWORD` env var → login screen on all pages
+- **Static API**: `holdings.json` and `summary.json` generated on startup, served at `/app/static/api/`
+- **Jarvis query API**: `/?jarvis=1&token=<password>&resource=holdings|summary` returns JSON
+
+### Entry Point
+
+```
+Procfile: web: streamlit run kodak/dashboard/Home.py --server.port=$PORT ...
+```
+
+Both local and Heroku use the same entry point (`kodak/dashboard/Home.py`) and modular pages (`kodak/dashboard/pages/`). The old monolithic `heroku/app.py` is deprecated.
+
+### Environment Variables (Heroku)
+
+```bash
+heroku config:set DATABASE_URL=<auto-set by Heroku Postgres addon>
+heroku config:set DASHBOARD_PASSWORD=<your password>
+heroku config:set BASE_CURRENCY=NOK
+```
+
 ## Code Conventions
 
 - Use `logging` module, not `print()` for debug output
