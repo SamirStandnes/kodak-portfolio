@@ -1,31 +1,24 @@
-"""Centralized constants for the Kodak portfolio system."""
+"""Centralized constants for the Kodak portfolio system.
+
+Theme constants (COLORS, PLOTLY_LAYOUT) are re-exported from
+kodak.dashboard.style — that module is the single source of truth.
+"""
 
 # Dashboard
 CACHE_TTL = 300  # 5 minutes
 TABLE_HEIGHT = 600
 MIN_QUANTITY_THRESHOLD = 0.001
 
-# Colors — consistent palette across all charts
-COLORS = {
-    "primary": "#4A90D9",       # Blue — main accent, equity bars
-    "positive": "#27AE60",      # Green — gains, dividends
-    "negative": "#E74C3C",      # Red — losses, fees
-    "warning": "#F39C12",       # Amber — warnings, fee efficiency
-    "purple": "#8E44AD",        # Purple — platform fees, secondary
-    "neutral": "#95A5A6",       # Grey — neutral data
-    "light_blue": "#5DADE2",    # Light blue — bars, secondary charts
-    "text_muted": "#AAB2BD",    # Muted text
-}
-
-# Plotly chart defaults
-PLOTLY_LAYOUT = dict(
-    paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(color="#FAFAFA", size=13),
-    margin=dict(l=40, r=40, t=50, b=40),
-    hovermode="x unified",
-    legend=dict(
-        bgcolor="rgba(0,0,0,0)",
-        font=dict(size=12),
-    ),
-)
+# Re-export theme — kept here so non-dashboard code (CLIs, scripts) can
+# import COLORS without depending on streamlit being importable.
+try:
+    from kodak.dashboard.style import COLORS, PLOTLY_LAYOUT
+except ImportError:
+    # Streamlit not available (e.g. running CLI in a stripped env) — provide a
+    # minimal fallback so non-UI imports still succeed.
+    COLORS = {
+        "primary": "#667EEA", "positive": "#3FB950", "negative": "#F85149",
+        "warning": "#D29922", "purple": "#BC8CFF", "neutral": "#8B949E",
+        "light_blue": "#58A6FF", "text_muted": "#8B949E",
+    }
+    PLOTLY_LAYOUT = {}

@@ -9,7 +9,7 @@ import pandas as pd
 import plotly.express as px
 from kodak.dashboard.common import (
     BASE_CURRENCY, CACHE_TTL, COLORS, page_setup, format_local,
-    display_table, number_col, apply_plotly_theme, convert_to_base,
+    display_table, display_aggrid, number_col, apply_plotly_theme, convert_to_base,
 )
 from kodak.shared.db import get_connection
 from kodak.shared.calculations import get_holdings
@@ -22,29 +22,45 @@ def load_holdings_data():
     conn = get_connection()
     df_holdings = get_holdings()
 
+    # Latest close + previous close per instrument (for daily change)
     prices = pd.read_sql_query('''
-        SELECT mp.instrument_id, mp.close, i.currency, COALESCE(i.symbol, i.isin) as symbol,
-               i.name, i.sector, i.region, i.country, i.asset_class
-        FROM market_prices mp
-        JOIN instruments i ON mp.instrument_id = i.id
-        WHERE (mp.instrument_id, mp.date) IN (
-            SELECT instrument_id, MAX(date) FROM market_prices GROUP BY instrument_id
+        WITH ranked AS (
+            SELECT instrument_id, date, close,
+                   ROW_NUMBER() OVER (PARTITION BY instrument_id ORDER BY date DESC) AS rn
+            FROM market_prices
         )
+        SELECT
+            latest.instrument_id, latest.close AS close, latest.date AS price_date,
+            prev.close AS prev_close,
+            i.currency, COALESCE(i.symbol, i.isin) AS symbol,
+            i.name, i.sector, i.region, i.country, i.asset_class
+        FROM ranked AS latest
+        LEFT JOIN ranked AS prev
+          ON latest.instrument_id = prev.instrument_id AND prev.rn = 2
+        JOIN instruments i ON latest.instrument_id = i.id
+        WHERE latest.rn = 1
     ''', conn)
     conn.close()
 
     price_map = {}
     for _, row in prices.iterrows():
+        prev = row['prev_close']
+        day_change_pct = (
+            (row['close'] / prev - 1) * 100
+            if prev and prev > 0 and pd.notna(prev) else None
+        )
         price_map[row['instrument_id']] = {
             'price': row['close'], 'currency': row['currency'],
             'name': row['name'], 'sector': row['sector'],
             'region': row['region'], 'country': row['country'],
             'asset_class': row['asset_class'],
+            'day_change_pct': day_change_pct,
         }
 
     data = []
     fx_cache = {}
     total_val = 0
+    total_day_change_value = 0  # day change in base currency
 
     for _, row in df_holdings.iterrows():
         inst_id = row['instrument_id']
@@ -58,8 +74,11 @@ def load_holdings_data():
         cost_basis = row['cost_basis_local']
         gain = market_val - cost_basis
         ret_pct = (market_val / cost_basis - 1) * 100 if cost_basis > 0 else 0
+        day_pct = mkt['day_change_pct']
+        day_value = market_val * (day_pct / 100) if day_pct is not None else 0
 
         total_val += market_val
+        total_day_change_value += day_value
 
         data.append({
             "Symbol": row['symbol'],
@@ -69,6 +88,8 @@ def load_holdings_data():
             "Country": mkt['country'],
             "Type": mkt['asset_class'],
             "Market Value": round(market_val),
+            "Day %": day_pct,
+            "Day Δ": round(day_value),
             "Gain/Loss": round(gain),
             "Return %": ret_pct,
         })
@@ -76,21 +97,28 @@ def load_holdings_data():
     df = pd.DataFrame(data)
     if not df.empty:
         df['Weight %'] = (df['Market Value'] / total_val) * 100
-    return df.sort_values('Market Value', ascending=False), total_val
+    return df.sort_values('Market Value', ascending=False), total_val, total_day_change_value
 
 
-df, total_val = load_holdings_data()
+df, total_val, total_day_change_value = load_holdings_data()
 
 # --- KEY METRICS ---
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 col1.metric("Total Equity Value", format_local(df['Market Value'].sum()))
 
 if not df.empty:
+    day_change_pct_total = (total_day_change_value / (total_val - total_day_change_value)) * 100 if (total_val - total_day_change_value) > 0 else 0
+    col2.metric(
+        "Today",
+        format_local(total_day_change_value),
+        f"{day_change_pct_total:+.2f}%",
+        help="Daily change since previous close, in base currency",
+    )
     top5_val = df.head(5)['Market Value'].sum()
     top5_pct = (top5_val / total_val) * 100 if total_val > 0 else 0
-    col2.metric("Top 5 Concentration", f"{top5_pct:.1f}%",
+    col3.metric("Top 5 Concentration", f"{top5_pct:.1f}%",
                 help="Percentage of portfolio in your 5 largest positions")
-    col3.metric("Positions", len(df))
+    col4.metric("Positions", len(df))
 
 st.divider()
 
@@ -112,10 +140,22 @@ st.divider()
 
 # --- HOLDINGS TABLE ---
 st.subheader("All Holdings")
-display_table(df, {
-    "Quantity": number_col("Quantity"),
-    "Market Value": number_col(f"Market Value ({BASE_CURRENCY})"),
-    "Gain/Loss": number_col(f"Gain/Loss ({BASE_CURRENCY})"),
-    "Return %": number_col("Return %", fmt="%.1f%%"),
-    "Weight %": st.column_config.ProgressColumn(format="%.1f%%", min_value=0, max_value=100),
-})
+display_aggrid(
+    df,
+    columns={
+        "Symbol":       {"width": 110},
+        "Quantity":     {"type": "number", "decimals": 0, "width": 100},
+        "Sector":       {"width": 140},
+        "Region":       {"width": 110},
+        "Country":      {"width": 110},
+        "Type":         {"width": 100},
+        "Market Value": {"type": "currency", "decimals": 0, "width": 140},
+        "Day %":        {"type": "percent",  "decimals": 2, "color_signed": True, "width": 100},
+        "Day Δ":        {"type": "currency", "decimals": 0, "color_signed": True, "width": 110},
+        "Gain/Loss":    {"type": "currency", "decimals": 0, "color_signed": True, "width": 130},
+        "Return %":     {"type": "percent",  "decimals": 1, "color_signed": True, "width": 110},
+        "Weight %":     {"type": "progress", "max": 100, "width": 140},
+    },
+    pin_left=["Symbol"],
+    height=560,
+)

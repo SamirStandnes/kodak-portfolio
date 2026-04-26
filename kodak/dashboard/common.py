@@ -82,17 +82,216 @@ def page_setup(title: str, icon: str):
     """Standard page config + title. Call once per page."""
     _check_auth()
     st.set_page_config(page_title=title, page_icon=icon, layout="wide")
-    st.title(f"{icon} {title}")
+
+    # Apply canonical theme (CSS, fonts, sidebar branding).
+    from kodak.dashboard.style import apply_theme, page_header
+    apply_theme()
+    page_header(f"{icon} {title}")
+
+
+def _translate_column_config(column_config: dict) -> dict:
+    """Convert Streamlit column_config dicts → display_aggrid spec dicts.
+
+    Streamlit column_config objects are plain dicts with `type_config.type` and
+    `type_config.format`. We map common patterns; unrecognized columns fall
+    through with no special spec (rendered as text).
+    """
+    import re
+    spec = {}
+    for col, cfg in (column_config or {}).items():
+        if not isinstance(cfg, dict):
+            continue
+        tc = cfg.get("type_config", {}) or {}
+        ctype = tc.get("type")
+        fmt = tc.get("format")
+        out = {}
+
+        if ctype == "number":
+            decimals = 0
+            if isinstance(fmt, str):
+                if fmt.endswith("%%") or fmt.endswith("%"):
+                    out["type"] = "percent"
+                    m = re.search(r"%\.(\d+)f", fmt)
+                    decimals = int(m.group(1)) if m else 1
+                elif fmt == "%d":
+                    out["type"] = "number"
+                    decimals = 0
+                elif re.search(r"%\.(\d+)f", fmt):
+                    out["type"] = "number"
+                    decimals = int(re.search(r"%\.(\d+)f", fmt).group(1))
+                else:
+                    out["type"] = "number"
+            else:
+                out["type"] = "number"
+            out["decimals"] = decimals
+        elif ctype == "progress":
+            out["type"] = "progress"
+            out["max"] = tc.get("max_value", 100) or 100
+        # text and date fall through with no spec (rendered as plain text)
+
+        if out:
+            spec[col] = out
+    return spec
 
 
 def display_table(df, column_config: dict, height: int = TABLE_HEIGHT):
-    """Standard dataframe display with consistent settings."""
+    """Render df via AG-Grid by translating Streamlit column_config to AG-Grid specs."""
+    return display_aggrid(df, columns=_translate_column_config(column_config), height=height)
+
+
+def display_table_native(df, column_config: dict, height: int = TABLE_HEIGHT):
+    """Escape hatch — use Streamlit's native dataframe (kept for edge cases)."""
     st.dataframe(
         df,
         column_config=column_config,
         use_container_width=True,
         hide_index=True,
         height=height,
+    )
+
+
+def _kodak_aggrid_theme():
+    """Build the Kodak dark theme using streamlit-aggrid v1.2+ Theming API."""
+    from st_aggrid import StAggridTheme
+    return (
+        StAggridTheme(base="balham")
+        .withParams(
+            backgroundColor="#0B0E13",
+            foregroundColor="#E6EDF3",
+            chromeBackgroundColor="#1C2333",
+            headerBackgroundColor="#1C2333",
+            headerTextColor="#8B949E",
+            borderColor="#21262D",
+            oddRowBackgroundColor="#0E131A",
+            rowHoverColor="#1C2333",
+            selectedRowBackgroundColor="#1C2333",
+            accentColor="#667EEA",
+            fontFamily="Inter, -apple-system, sans-serif",
+            fontSize=13,
+            rowHeight=38,
+            headerHeight=38,
+            wrapperBorderRadius=10,
+        )
+    )
+
+
+def display_aggrid(df, columns: dict | None = None, height: int = TABLE_HEIGHT, pin_left: list[str] | None = None):
+    """Render a DataFrame as an AG-Grid table with the dark Kodak theme.
+
+    `columns` maps column-name → spec dict:
+        {"type": "currency"|"percent"|"number"|"text"|"progress",
+         "decimals": int,
+         "color_signed": bool (green if >0, red if <0),
+         "max": float (only for type="progress"),
+         "width": int}
+    """
+    from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+
+    columns = columns or {}
+    pin_left = pin_left or []
+    gb = GridOptionsBuilder.from_dataframe(df)
+
+    gb.configure_default_column(
+        resizable=True, sortable=True, filter=True, floatingFilter=False,
+    )
+
+    def num_formatter(decimals: int) -> JsCode:
+        return JsCode(
+            "function(params){"
+            "  if (params.value === null || params.value === undefined || isNaN(params.value)) return '';"
+            f"  return Number(params.value).toLocaleString('nb-NO', {{minimumFractionDigits:{decimals}, maximumFractionDigits:{decimals}}});"
+            "}"
+        )
+
+    def pct_formatter(decimals: int) -> JsCode:
+        return JsCode(
+            "function(params){"
+            "  if (params.value === null || params.value === undefined || isNaN(params.value)) return '';"
+            f"  return Number(params.value).toFixed({decimals}) + '%';"
+            "}"
+        )
+
+    def progress_value_formatter(decimals: int = 1) -> JsCode:
+        return JsCode(
+            "function(params){"
+            "  if (params.value === null || params.value === undefined || isNaN(params.value)) return '';"
+            f"  return Number(params.value).toFixed({decimals}) + '%';"
+            "}"
+        )
+
+    def progress_cell_style(max_val: float) -> JsCode:
+        return JsCode(
+            "function(params){"
+            "  const v = Number(params.value) || 0;"
+            f"  const max = {max_val};"
+            "  const pct = Math.max(0, Math.min(100, (v / max) * 100));"
+            "  return {"
+            "    background: 'linear-gradient(to right, rgba(102,126,234,0.45) 0%, rgba(118,75,162,0.45) ' + pct + '%, transparent ' + pct + '%)',"
+            "    color: '#E6EDF3',"
+            "    fontFamily: 'JetBrains Mono, monospace',"
+            "    fontSize: '13px',"
+            "    paddingLeft: '8px',"
+            "    display: 'flex',"
+            "    alignItems: 'center',"
+            "  };"
+            "}"
+        )
+
+    signed_color = JsCode(
+        "function(params){"
+        "  const v = Number(params.value);"
+        "  if (isNaN(v)) return {fontFamily:'JetBrains Mono, monospace'};"
+        "  if (v > 0) return {color:'#3FB950', fontFamily:'JetBrains Mono, monospace', fontWeight:'600'};"
+        "  if (v < 0) return {color:'#F85149', fontFamily:'JetBrains Mono, monospace', fontWeight:'600'};"
+        "  return {color:'#8B949E', fontFamily:'JetBrains Mono, monospace'};"
+        "}"
+    )
+    mono_style = {"fontFamily": "JetBrains Mono, monospace"}
+
+    for col, spec in columns.items():
+        if col not in df.columns:
+            continue
+        kwargs = {}
+        if "width" in spec:
+            kwargs["width"] = spec["width"]
+        if col in pin_left:
+            kwargs["pinned"] = "left"
+
+        ctype = spec.get("type", "text")
+        decimals = spec.get("decimals", 0)
+        color_signed = spec.get("color_signed", False)
+
+        if ctype in ("currency", "number"):
+            kwargs["valueFormatter"] = num_formatter(decimals)
+            kwargs["type"] = "rightAligned"
+            kwargs["cellStyle"] = signed_color if color_signed else mono_style
+        elif ctype == "percent":
+            kwargs["valueFormatter"] = pct_formatter(decimals)
+            kwargs["type"] = "rightAligned"
+            kwargs["cellStyle"] = signed_color if color_signed else mono_style
+        elif ctype == "progress":
+            max_val = spec.get("max", 100)
+            kwargs["valueFormatter"] = progress_value_formatter(decimals if decimals else 1)
+            kwargs["cellStyle"] = progress_cell_style(max_val)
+        else:
+            if color_signed:
+                kwargs["cellStyle"] = signed_color
+
+        gb.configure_column(col, **kwargs)
+
+    for col in pin_left:
+        if col in df.columns and col not in columns:
+            gb.configure_column(col, pinned="left")
+
+    grid_options = gb.build()
+
+    return AgGrid(
+        df,
+        gridOptions=grid_options,
+        theme=_kodak_aggrid_theme(),
+        height=height,
+        allow_unsafe_jscode=True,
+        update_mode="NO_UPDATE",
     )
 
 
