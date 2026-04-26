@@ -7,7 +7,7 @@ if root_path not in sys.path:
 import streamlit as st
 import pandas as pd
 from kodak.dashboard.common import BASE_CURRENCY, page_setup, display_table, text_col, number_col
-from kodak.shared.db import get_connection
+from kodak.shared.db import get_connection, query_df
 
 page_setup("System Status", "⚙️")
 
@@ -29,7 +29,7 @@ def get_data_freshness():
         GROUP BY source_file
         ORDER BY MAX(date) DESC
     """
-    df = pd.read_sql_query(query, conn)
+    df = query_df(query, conn)
     conn.close()
     return df
 
@@ -49,10 +49,10 @@ else:
 with st.expander("Database Statistics"):
     conn = get_connection()
     try:
-        tables = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table';", conn)
+        tables = query_df("SELECT name FROM sqlite_master WHERE type='table';", conn)
         stats = []
         for table in tables['name']:
-            count = pd.read_sql_query(f"SELECT COUNT(*) as c FROM {table}", conn).iloc[0]['c']
+            count = query_df(f"SELECT COUNT(*) as c FROM {table}", conn).iloc[0]['c']
             stats.append({'Table': table, 'Rows': count})
 
         display_table(pd.DataFrame(stats), {

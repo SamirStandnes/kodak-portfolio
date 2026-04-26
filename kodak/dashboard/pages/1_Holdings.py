@@ -11,7 +11,7 @@ from kodak.dashboard.common import (
     BASE_CURRENCY, CACHE_TTL, COLORS, page_setup, format_local,
     display_table, display_aggrid, number_col, apply_plotly_theme, convert_to_base,
 )
-from kodak.shared.db import get_connection
+from kodak.shared.db import get_connection, query_df
 from kodak.shared.calculations import get_holdings
 
 page_setup("Holdings", "🏦")
@@ -22,8 +22,10 @@ def load_holdings_data():
     conn = get_connection()
     df_holdings = get_holdings()
 
-    # Latest close + previous close per instrument (for daily change)
-    prices = pd.read_sql_query('''
+    # Latest close + previous close per instrument (for daily change).
+    # Use query_df (cursor-based) — pd.read_sql_query bypasses the Heroku
+    # SQL translation layer and crashes on Postgres.
+    prices = query_df('''
         WITH ranked AS (
             SELECT instrument_id, date, close,
                    ROW_NUMBER() OVER (PARTITION BY instrument_id ORDER BY date DESC) AS rn

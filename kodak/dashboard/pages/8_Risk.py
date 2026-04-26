@@ -12,7 +12,7 @@ from kodak.dashboard.common import (
     BASE_CURRENCY, CACHE_TTL, COLORS, page_setup, format_local,
     display_table, number_col, apply_plotly_theme, convert_to_base,
 )
-from kodak.shared.db import get_connection
+from kodak.shared.db import get_connection, query_df
 from kodak.shared.calculations import get_holdings
 
 page_setup("Risk & Concentration", "🎯")
@@ -23,7 +23,7 @@ def load_risk_data():
     conn = get_connection()
     df_holdings = get_holdings()
 
-    prices = pd.read_sql_query('''
+    prices = query_df('''
         SELECT mp.instrument_id, mp.close, i.currency, COALESCE(i.symbol, i.isin) as symbol,
                i.sector, i.region, i.country, i.asset_class
         FROM market_prices mp

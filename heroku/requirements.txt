@@ -8,6 +8,7 @@ yfinance
 
 # Dashboard
 streamlit
+streamlit-aggrid
 plotly
 
 # PostgreSQL

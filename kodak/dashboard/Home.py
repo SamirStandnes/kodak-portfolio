@@ -97,10 +97,10 @@ def load_summary_data():
 
     df_holdings = get_holdings()
 
-    instruments = pd.read_sql_query(
+    instruments = query_df(
         'SELECT id, sector, region, country, asset_class, currency FROM instruments', conn
     )
-    prices = pd.read_sql_query('''
+    prices = query_df('''
         SELECT mp.instrument_id, mp.close, i.currency
         FROM market_prices mp
         JOIN instruments i ON mp.instrument_id = i.id
@@ -138,7 +138,7 @@ def load_summary_data():
                 'Currency': meta.get('currency') or 'Unknown',
             })
 
-    total_cash_base = pd.read_sql_query(
+    total_cash_base = query_df(
         "SELECT COALESCE(SUM(amount_local), 0) as total FROM transactions", conn
     ).iloc[0]['total']
 

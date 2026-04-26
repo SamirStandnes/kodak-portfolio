@@ -10,7 +10,7 @@ from kodak.dashboard.common import (
     BASE_CURRENCY, CACHE_TTL, page_setup,
     display_table, number_col, text_col, date_col,
 )
-from kodak.shared.db import get_connection
+from kodak.shared.db import get_connection, query_df
 
 page_setup("Portfolio Activity", "📝")
 
@@ -39,7 +39,7 @@ def load_activity_data(limit, all_txns):
     if not all_txns:
         query += f" LIMIT {limit}"
 
-    df = pd.read_sql_query(query, conn)
+    df = query_df(query, conn)
     conn.close()
     return df
 
