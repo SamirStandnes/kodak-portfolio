@@ -21,6 +21,7 @@ transaction_types:
     - TILDELING INNLEGG RE      # Nordnet: Rights issue deposit
     - BYTTE INNLEGG VP          # Nordnet: Exchange/split deposit
     - EMISJON INNLEGG VP        # Nordnet: Emission deposit
+    - UTSKILLING FISJON IN      # Nordnet: Demerger/spinoff inbound shares
 
   # Outflow types: Transactions that REMOVE shares/assets from your portfolio
   outflow:

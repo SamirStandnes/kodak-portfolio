@@ -21,7 +21,8 @@ def get_portfolio_data():
 
     # Get Latest Prices & Currencies
     price_rows = execute_query('''
-        SELECT mp.instrument_id, mp.close, i.currency
+        SELECT mp.instrument_id, mp.close, i.currency,
+               i.sector, i.region, i.country, i.asset_class
         FROM market_prices mp
         JOIN instruments i ON mp.instrument_id = i.id
         WHERE (mp.instrument_id, mp.date) IN (
@@ -35,7 +36,11 @@ def get_portfolio_data():
     for row in price_rows:
         price_map[row['instrument_id']] = {
             'price': row['close'],
-            'currency': row['currency']
+            'currency': row['currency'],
+            'sector': row['sector'],
+            'region': row['region'],
+            'country': row['country'],
+            'asset_class': row['asset_class']
         }
 
     fx_cache = {}
@@ -75,7 +80,11 @@ def get_portfolio_data():
             'currency': curr,
             'market_value': market_value,
             'gain_loss': gain_loss,
-            'return_pct': return_pct
+            'return_pct': return_pct,
+            'sector': market_data.get('sector') if market_data else None,
+            'region': market_data.get('region') if market_data else None,
+            'country': market_data.get('country') if market_data else None,
+            'asset_class': market_data.get('asset_class') if market_data else None
         })
 
         total_market_value += market_value
@@ -115,6 +124,10 @@ def export_holdings_json(output_path: str) -> None:
     holdings = [
         {
             'symbol': h['symbol'],
+            'sector': h['sector'],
+            'region': h['region'],
+            'country': h['country'],
+            'asset_class': h['asset_class'],
             'quantity': round(h['quantity'], 2),
             'cost_basis': round(h['quantity'] * h['avg_cost'], 0),
             'market_value': round(h['market_value'], 0),
