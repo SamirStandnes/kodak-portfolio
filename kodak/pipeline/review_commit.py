@@ -39,6 +39,19 @@ def _append_placeholder_accounts(unknown_accs):
         logger.warning(f"Could not update accounts_map.csv: {e}")
 
 
+def _looks_like_name(value):
+    """A Yahoo ticker never contains spaces (e.g. AENA.MC, BRK-B, XCS3.DE,
+    0P0001K6NJ.IR). Display names from broker exports do
+    (e.g. "Xtrackers MSCI Malaysia UCITS ETF 1C"). If we get a name into
+    the symbol column, Yahoo can't resolve it and price fetches silently
+    produce zero market value.
+    """
+    if value is None:
+        return False
+    s = str(value).strip()
+    return bool(s) and ' ' in s
+
+
 def _append_placeholder_instruments(df, unknown_isins):
     """Append placeholder rows to isin_map.csv for new instruments."""
     if not os.path.exists(ISIN_MAP_PATH):
@@ -49,28 +62,43 @@ def _append_placeholder_instruments(df, unknown_isins):
         existing_df = pd.read_csv(ISIN_MAP_PATH)
         existing_isins = set(existing_df['isin'].astype(str))
 
-        # Get symbol and currency from the staged data for each new ISIN
         staged_instruments = df[df['isin'].isin(unknown_isins)][['isin', 'symbol', 'currency']].drop_duplicates('isin')
 
         new_rows = []
+        needs_ticker = []
         for _, row in staged_instruments.iterrows():
-            if str(row['isin']) not in existing_isins:
-                new_rows.append({
-                    'isin': row['isin'],
-                    'symbol': row['symbol'] or 'UNKNOWN',
-                    'currency': row['currency'] or 'UNKNOWN',
-                    'sector': '',
-                    'region': 'Unknown',
-                    'country': '',
-                    'asset_class': 'Equity'
-                })
+            if str(row['isin']) in existing_isins:
+                continue
+            raw = row['symbol']
+            if _looks_like_name(raw):
+                ticker = ''
+                needs_ticker.append((row['isin'], raw))
+            else:
+                ticker = raw or ''
+            new_rows.append({
+                'isin': row['isin'],
+                'symbol': ticker,
+                'currency': row['currency'] or '',
+                'sector': '',
+                'region': '',
+                'country': '',
+                'asset_class': '',
+            })
 
         if new_rows:
             new_df = pd.DataFrame(new_rows)
             combined = pd.concat([existing_df, new_df], ignore_index=True)
             combined.to_csv(ISIN_MAP_PATH, index=False)
             for r in new_rows:
-                print(f"  [+] Added {r['isin']} ({r['symbol']}) to isin_map.csv - please update symbol/metadata.")
+                tag = '(symbol blank — set Yahoo ticker)' if not r['symbol'] else f"({r['symbol']})"
+                print(f"  [+] Added {r['isin']} {tag} to isin_map.csv")
+
+        if needs_ticker:
+            print()
+            print("[!] ACTION NEEDED: set a Yahoo ticker in data/reference/isin_map.csv before")
+            print("    prices can be fetched for the following instruments:")
+            for isin, name in needs_ticker:
+                print(f"      {isin}  ({name})")
     except Exception as e:
         logger.warning(f"Could not update isin_map.csv: {e}")
 
@@ -163,11 +191,17 @@ def _commit_data(df, new_accs, new_isins, base_curr):
             print(f"Created account: {name} ({base_curr})")
 
         # 2. Create New Instruments
-        # We need symbol from the dataframe for these ISINs
+        # The parser writes whatever the broker provides into staging.symbol —
+        # for foreign-listed ETFs that's a display name ("Xtrackers MSCI ...")
+        # rather than a Yahoo ticker. Route those into instruments.name so the
+        # symbol column stays clean for real tickers.
         unique_instruments = df[df['isin'].isin(new_isins)][['isin', 'symbol']].drop_duplicates('isin')
         for _, row in unique_instruments.iterrows():
-            cursor.execute("INSERT INTO instruments (isin, symbol) VALUES (?, ?)", (row['isin'], row['symbol']))
-            # print(f"Created instrument: {row['symbol']} ({row['isin']})")
+            raw = row['symbol']
+            if _looks_like_name(raw):
+                cursor.execute("INSERT INTO instruments (isin, name) VALUES (?, ?)", (row['isin'], raw))
+            else:
+                cursor.execute("INSERT INTO instruments (isin, symbol) VALUES (?, ?)", (row['isin'], raw))
 
         # 3. Insert Transactions
         # Prepare cache for lookups using the SAME cursor/connection to see uncommitted changes
