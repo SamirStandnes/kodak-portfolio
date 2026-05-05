@@ -1,6 +1,4 @@
 import sys
-import os
-import json
 from pathlib import Path
 root_path = str(Path(__file__).resolve().parent.parent.parent)
 if root_path not in sys.path:
@@ -10,83 +8,11 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from kodak.dashboard.common import (
-    BASE_CURRENCY, CACHE_TTL, COLORS, page_setup, _IS_HEROKU,
+    BASE_CURRENCY, CACHE_TTL, COLORS, page_setup,
     format_local, apply_plotly_theme, convert_to_base,
 )
-from kodak.shared.db import get_connection, execute_query, get_db_connection, query_df
+from kodak.shared.db import get_connection, query_df
 from kodak.shared.calculations import get_holdings, get_income_and_costs
-from kodak.shared.market_data import get_exchange_rate
-
-# --- STATIC API (Heroku only) ---
-# Generates holdings.json and summary.json, served via Streamlit static files.
-if _IS_HEROKU:
-    @st.cache_resource(ttl=300)
-    def _generate_static_api():
-        try:
-            static_dir = Path(__file__).parent / "static" / "api"
-            static_dir.mkdir(parents=True, exist_ok=True)
-            cfg_base = BASE_CURRENCY
-
-            with get_db_connection() as conn:
-                df_h = get_holdings()
-                prices = query_df("""
-                    SELECT mp.instrument_id, mp.close, i.currency, i.symbol, i.name,
-                           i.sector, i.region, i.country, i.asset_class
-                    FROM market_prices mp JOIN instruments i ON mp.instrument_id = i.id
-                    WHERE (mp.instrument_id, mp.date) IN (
-                        SELECT instrument_id, MAX(date) FROM market_prices GROUP BY instrument_id
-                    )
-                """, conn)
-
-            pm = {r["instrument_id"]: r for _, r in prices.iterrows()}
-            fx, rows, total = {}, [], 0
-            for _, r in df_h.iterrows():
-                m = pm.get(r["instrument_id"])
-                if m is None:
-                    continue
-                curr = m["currency"]
-                rate = 1.0 if curr == cfg_base else fx.setdefault(curr, get_exchange_rate(curr, cfg_base))
-                val = r["quantity"] * m["close"] * rate
-                cost = r["cost_basis_local"]
-                total += val
-                rows.append({
-                    "symbol": r["symbol"], "quantity": round(float(r["quantity"]), 4),
-                    "sector": m["sector"], "region": m["region"], "country": m["country"],
-                    "asset_class": m["asset_class"], "currency": curr,
-                    "price": round(float(m["close"]), 4), "market_value": round(val, 2),
-                    "cost_basis": round(cost, 2), "gain_loss": round(val - cost, 2),
-                    "return_pct": round((val / cost - 1) * 100, 2) if cost > 0 else 0,
-                })
-            for row in rows:
-                row["weight_pct"] = round(row["market_value"] / total * 100, 2) if total > 0 else 0
-            rows.sort(key=lambda x: x["market_value"], reverse=True)
-            (static_dir / "holdings.json").write_text(json.dumps(
-                {"base_currency": cfg_base, "total_market_value": round(total, 2), "holdings": rows}, indent=2))
-
-            income = get_income_and_costs()
-            (static_dir / "summary.json").write_text(json.dumps(
-                {"base_currency": cfg_base, "dividends": round(float(income["dividends"]), 2),
-                 "interest": round(float(income["interest"]), 2), "fees": round(float(income["fees"]), 2)}, indent=2))
-        except Exception as e:
-            import logging, traceback
-            logging.error(f"Static API generation failed: {e}")
-            traceback.print_exc()
-
-    _generate_static_api()
-
-# --- JARVIS QUERY API (Heroku only) ---
-# Usage: GET /?jarvis=1&token=<DASHBOARD_PASSWORD>&resource=holdings|summary
-_qp = st.query_params
-if _qp.get("jarvis") == "1" and _qp.get("token") == os.environ.get("DASHBOARD_PASSWORD", ""):
-    st.set_page_config(page_title="Kodak API", layout="wide")
-    _resource = _qp.get("resource", "holdings")
-    _static_dir = Path(__file__).parent / "static" / "api"
-    _file = _static_dir / f"{_resource}.json"
-    if _file.exists():
-        st.code(_file.read_text(), language="json")
-    else:
-        st.code(json.dumps({"error": f"Unknown resource: {_resource}"}), language="json")
-    st.stop()
 
 page_setup("Portfolio Overview", "📈")
 

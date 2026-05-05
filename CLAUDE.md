@@ -100,8 +100,6 @@ The same codebase runs both locally (SQLite) and on Heroku (PostgreSQL). Detecti
 ### Heroku-Only Features
 
 - **Password auth**: `DASHBOARD_PASSWORD` env var → login screen on all pages
-- **Static API**: `holdings.json` and `summary.json` generated on startup, served at `/app/static/api/`
-- **Jarvis query API**: `/?jarvis=1&token=<password>&resource=holdings|summary` returns JSON
 
 ### Entry Point
 
