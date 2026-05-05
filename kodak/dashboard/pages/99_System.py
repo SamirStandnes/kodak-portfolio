@@ -21,14 +21,14 @@ st.subheader("Data Source Status")
 
 def get_data_freshness():
     conn = get_connection()
-    query = """
-        SELECT source_file as Source,
-               MAX(date) as 'Last Transaction Date',
-               COUNT(*) as 'Total Transactions'
+    query = '''
+        SELECT source_file as "Source",
+               MAX(date) as "Last Transaction Date",
+               COUNT(*) as "Total Transactions"
         FROM transactions
         GROUP BY source_file
         ORDER BY MAX(date) DESC
-    """
+    '''
     df = query_df(query, conn)
     conn.close()
     return df
