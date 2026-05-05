@@ -51,10 +51,17 @@ def _check_auth():
     if st.session_state.get("password_correct"):
         return  # Already authenticated
 
-    st.set_page_config(page_title="Kodak Portfolio", page_icon="📈", layout="centered")
+    st.set_page_config(
+        page_title="Kodak Portfolio", page_icon="📈",
+        layout="centered", initial_sidebar_state="collapsed",
+    )
     st.markdown("""
         <style>
         #MainMenu, header, footer {visibility: hidden;}
+        /* Hide the auto-discovered page nav before login */
+        [data-testid="stSidebar"], [data-testid="stSidebarNav"],
+        [data-testid="stSidebarCollapseButton"],
+        [data-testid="collapsedControl"] { display: none !important; }
         .block-container { max-width: 420px; padding-top: 8vh; }
         [data-testid="InputInstructions"] { display: none !important; }
         .stForm [data-testid="stFormSubmitButton"] button { width: 100%; }
