@@ -42,8 +42,13 @@ config = load_config()
 BASE_CURRENCY = config.get('base_currency', 'NOK')
 
 
-def _check_auth():
-    """Password gate for Heroku. No-op locally (no DASHBOARD_PASSWORD set)."""
+def check_auth():
+    """Password gate for Heroku. No-op locally (no DASHBOARD_PASSWORD set).
+
+    Called once from the entry-point router (Home.py) BEFORE st.navigation
+    is built, so the sidebar nav literally doesn't exist for unauthenticated
+    visitors — no flash, no CSS race.
+    """
     password = os.environ.get("DASHBOARD_PASSWORD")
     if not password:
         return  # Local mode — no auth
@@ -55,31 +60,9 @@ def _check_auth():
         page_title="Kodak Portfolio", page_icon="📈",
         layout="centered", initial_sidebar_state="collapsed",
     )
-    # Hide the auto-discovered page nav. We use width:0 + visibility:hidden
-    # alongside display:none so even if Streamlit briefly paints the sidebar
-    # before our CSS attaches, no layout shift or flash is visible.
     st.markdown("""
         <style>
         #MainMenu, header, footer {visibility: hidden !important;}
-        section[data-testid="stSidebar"],
-        div[data-testid="stSidebar"],
-        [data-testid="stSidebarNav"],
-        [data-testid="stSidebarContent"],
-        [data-testid="stSidebarCollapseButton"],
-        [data-testid="stSidebarCollapsedControl"],
-        [data-testid="collapsedControl"],
-        button[kind="header"] {
-            display: none !important;
-            visibility: hidden !important;
-            width: 0 !important;
-            min-width: 0 !important;
-            opacity: 0 !important;
-            pointer-events: none !important;
-        }
-        section.main, [data-testid="stAppViewContainer"] > section {
-            margin-left: 0 !important;
-            padding-left: 0 !important;
-        }
         .block-container { max-width: 420px; padding-top: 8vh; }
         [data-testid="InputInstructions"] { display: none !important; }
         .stForm [data-testid="stFormSubmitButton"] button { width: 100%; }
@@ -104,11 +87,8 @@ def _check_auth():
 
 
 def page_setup(title: str, icon: str):
-    """Standard page config + title. Call once per page."""
-    _check_auth()
-    st.set_page_config(page_title=title, page_icon=icon, layout="wide")
-
-    # Apply canonical theme (CSS, fonts, sidebar branding).
+    """Per-page setup: apply theme + render header. Auth and set_page_config
+    are handled by the entry-point router (Home.py)."""
     from kodak.dashboard.style import apply_theme, page_header
     apply_theme()
     page_header(f"{icon} {title}")
