@@ -49,7 +49,10 @@ with tab1:
                 hovertemplate=f"<b>%{{x}}</b><br>%{{y:,.0f}} {BASE_CURRENCY}<extra></extra>",
             )
             apply_plotly_theme(fig)
-            fig.update_layout(showlegend=False, hovermode='closest')
+            fig.update_layout(
+                showlegend=False, hovermode='closest',
+                xaxis_title='', yaxis_title=BASE_CURRENCY,
+            )
             st.plotly_chart(fig, use_container_width=True)
     with tcol2:
         st.caption("By Currency")
