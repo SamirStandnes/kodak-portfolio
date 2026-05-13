@@ -108,11 +108,13 @@ fig_conc = px.bar(
     df_conc, x='Weight %', y='Symbol', orientation='h',
     color='Weight %',
     color_continuous_scale=[[0, COLORS['positive']], [0.5, COLORS['warning']], [1, COLORS['negative']]],
+    labels={'Weight %': 'Portfolio Weight (%)', 'Symbol': ''},
 )
-fig_conc.update_layout(yaxis=dict(autorange='reversed'), xaxis_title='Portfolio Weight (%)')
+fig_conc.update_traces(hovertemplate="<b>%{y}</b><br>Weight: %{x:.2f}%<extra></extra>")
 fig_conc.add_vline(x=10, line_dash='dash', line_color=COLORS['warning'],
                    annotation_text='10% threshold', annotation_position='top right')
 apply_plotly_theme(fig_conc)
+fig_conc.update_layout(yaxis=dict(autorange='reversed'), hovermode='closest')
 st.plotly_chart(fig_conc, use_container_width=True)
 
 display_table(df_conc, {

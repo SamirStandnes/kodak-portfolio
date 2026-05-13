@@ -44,9 +44,17 @@ tab1, tab2, tab3 = st.tabs(["Yearly Overview", "Top Payers", "Forecast"])
 
 with tab1:
     if not df_yearly.empty:
-        fig = px.bar(df_yearly, x='year', y='total', color_discrete_sequence=[COLORS['positive']])
-        fig.update_layout(xaxis_title="", yaxis_title=BASE_CURRENCY, showlegend=False)
+        fig = px.bar(
+            df_yearly, x='year', y='total',
+            labels={'total': BASE_CURRENCY, 'year': ''},
+            color_discrete_sequence=[COLORS['positive']],
+        )
+        fig.update_traces(
+            name=BASE_CURRENCY,
+            hovertemplate=f"<b>%{{x}}</b><br>%{{y:,.0f}} {BASE_CURRENCY}<extra></extra>",
+        )
         apply_plotly_theme(fig)
+        fig.update_layout(showlegend=False, hovermode='closest')
         st.plotly_chart(fig, use_container_width=True)
 
 with tab2:

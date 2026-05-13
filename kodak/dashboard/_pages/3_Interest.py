@@ -39,9 +39,17 @@ with tab1:
     tcol1, tcol2 = st.columns([2, 1])
     with tcol1:
         if not df_yearly.empty:
-            fig = px.bar(df_yearly, x='year', y='total', color_discrete_sequence=[COLORS['primary']])
-            fig.update_layout(xaxis_title="", yaxis_title=BASE_CURRENCY, showlegend=False)
+            fig = px.bar(
+                df_yearly, x='year', y='total',
+                labels={'total': BASE_CURRENCY, 'year': ''},
+                color_discrete_sequence=[COLORS['primary']],
+            )
+            fig.update_traces(
+                name=BASE_CURRENCY,
+                hovertemplate=f"<b>%{{x}}</b><br>%{{y:,.0f}} {BASE_CURRENCY}<extra></extra>",
+            )
             apply_plotly_theme(fig)
+            fig.update_layout(showlegend=False, hovermode='closest')
             st.plotly_chart(fig, use_container_width=True)
     with tcol2:
         st.caption("By Currency")

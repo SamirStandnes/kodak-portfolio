@@ -133,9 +133,15 @@ if not df.empty:
         color='Return %',
         color_continuous_scale=['#E74C3C', '#95A5A6', '#27AE60'],
         color_continuous_midpoint=0,
+        labels={'Market Value': f'Market Value ({BASE_CURRENCY})', 'Symbol': '', 'Return %': 'Return'},
     )
-    fig.update_layout(yaxis=dict(autorange='reversed'), xaxis_title=f'Market Value ({BASE_CURRENCY})')
+    fig.update_traces(hovertemplate=(
+        "<b>%{y}</b><br>"
+        f"Market Value: %{{x:,.0f}} {BASE_CURRENCY}<br>"
+        "Return: %{marker.color:+.2f}%<extra></extra>"
+    ))
     apply_plotly_theme(fig)
+    fig.update_layout(yaxis=dict(autorange='reversed'), hovermode='closest')
     st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
