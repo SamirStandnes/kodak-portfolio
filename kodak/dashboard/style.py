@@ -68,7 +68,6 @@ def get_plotly_layout(**overrides) -> dict:
             color=COLORS["text"],
             size=12,
         ),
-        title=dict(text="", font=dict(size=16, color=COLORS["text"])),
         xaxis=dict(
             gridcolor=COLORS["border_light"],
             linecolor=COLORS["border"],
