@@ -57,14 +57,16 @@ if not df_years.empty:
         line=dict(color=COLORS['positive'], width=3), yaxis='y2',
     ))
 
+    apply_plotly_theme(fig)
     fig.update_layout(
         title='Yearly Equity & Returns',
-        xaxis=dict(title=''),
-        yaxis=dict(title=f'Equity ({BASE_CURRENCY})', side='left', showgrid=False),
-        yaxis2=dict(title='Return (%)', side='right', overlaying='y', showgrid=True),
+        yaxis=dict(side='left', showgrid=False),
+        yaxis2=dict(side='right', overlaying='y', showgrid=True),
         legend=dict(x=0.01, y=0.99),
+        xaxis_title='',
+        yaxis_title=f'Equity ({BASE_CURRENCY})',
+        yaxis2_title='Return (%)',
     )
-    apply_plotly_theme(fig)
     st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("Yearly Summary")

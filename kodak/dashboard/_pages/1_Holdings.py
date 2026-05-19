@@ -141,7 +141,12 @@ if not df.empty:
         "Return: %{marker.color:+.2f}%<extra></extra>"
     ))
     apply_plotly_theme(fig)
-    fig.update_layout(yaxis=dict(autorange='reversed'), hovermode='closest')
+    fig.update_layout(
+        yaxis=dict(autorange='reversed'),
+        hovermode='closest',
+        xaxis_title=f'Market Value ({BASE_CURRENCY})',
+        yaxis_title='',
+    )
     st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
