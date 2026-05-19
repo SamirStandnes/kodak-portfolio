@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 import pandas as pd
 from kodak.shared.db import get_connection, execute_non_query, execute_scalar, execute_query, create_backup
 from kodak.shared.utils import load_config
@@ -8,6 +9,8 @@ logger = logging.getLogger(__name__)
 
 ACCOUNTS_MAP_PATH = os.path.join('data', 'reference', 'accounts_map.csv')
 ISIN_MAP_PATH = os.path.join('data', 'reference', 'isin_map.csv')
+
+AUTO_YES = '--yes' in sys.argv or '-y' in sys.argv
 
 
 def _append_placeholder_accounts(unknown_accs):
@@ -164,8 +167,12 @@ def review_and_commit():
         print(f"\n[!] NOTICE: {len(unknown_insts)} New Instruments detected.")
         _append_placeholder_instruments(df, unknown_insts)
 
-    choice = input("\nCommit these transactions? (y/n/clear): ").lower().strip()
-    
+    if AUTO_YES:
+        print("\n[--yes] Auto-committing staged transactions.")
+        choice = 'y'
+    else:
+        choice = input("\nCommit these transactions? (y/n/clear): ").lower().strip()
+
     if choice == 'clear':
         execute_non_query("DELETE FROM transactions_staging")
         print("Staging cleared.")

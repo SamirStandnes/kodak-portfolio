@@ -28,7 +28,11 @@ if ($y) {
 
 if ($confirmation -eq 'y') {
     # 3. Commit
-    python -m kodak.pipeline.review_commit
+    if ($y) {
+        python -m kodak.pipeline.review_commit --yes
+    } else {
+        python -m kodak.pipeline.review_commit
+    }
 
     # 4. Map & Enrich
     Write-Host "`n[3/8] Updating ISIN and Account Maps..." -ForegroundColor Yellow
