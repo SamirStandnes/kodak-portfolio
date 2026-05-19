@@ -61,8 +61,9 @@ NO0010662836,0P0000Y66P.IR,NOK,,Unknown,,Fund
 US46138W1071,FXY,USD,Currency,Global,Global,ETF
 NO0003078107,AFG.OL,NOK,Industrials,Nordics,Norway,Equity
 NO0011002586,ELO.OL,NOK,Industrials,Nordics,Norway,Equity
-LU0514694370,XCS3.DE,EUR,Broad Market,Emerging Markets,Malaysia,ETF
-LU0592215403,XPQP.DE,EUR,Broad Market,Emerging Markets,Philippines,ETF
-LU0476289623,XAIN.DE,EUR,Broad Market,Emerging Markets,Indonesia,ETF
+LU0514694370,XCS3.DE,EUR,Broad Market,Asia,Malaysia,ETF
+LU0592215403,XPQP.DE,EUR,Broad Market,Asia,Philippines,ETF
+LU0476289623,XAIN.DE,EUR,Broad Market,Asia,Indonesia,ETF
 DE0007164600,SAP.DE,EUR,Technology,Europe,Germany,Equity
 SE0000117970,NCC-B.ST,SEK,Industrials,Europe,Sweden,Equity
+US5949728795,STRF,USD,,Americas,United States,Equity

@@ -159,7 +159,7 @@
     {
       "symbol": "STRF",
       "sector": null,
-      "region": "North America",
+      "region": "Americas",
       "country": "United States",
       "asset_class": "Equity",
       "quantity": 75.0,
@@ -183,7 +183,7 @@
     {
       "symbol": "XAIN.DE",
       "sector": "Broad Market",
-      "region": "Emerging Markets",
+      "region": "Asia",
       "country": "Indonesia",
       "asset_class": "ETF",
       "quantity": 500.0,
@@ -195,7 +195,7 @@
     {
       "symbol": "XCS3.DE",
       "sector": "Broad Market",
-      "region": "Emerging Markets",
+      "region": "Asia",
       "country": "Malaysia",
       "asset_class": "ETF",
       "quantity": 180.0,
@@ -207,7 +207,7 @@
     {
       "symbol": "XPQP.DE",
       "sector": "Broad Market",
-      "region": "Emerging Markets",
+      "region": "Asia",
       "country": "Philippines",
       "asset_class": "ETF",
       "quantity": 1650.0,
