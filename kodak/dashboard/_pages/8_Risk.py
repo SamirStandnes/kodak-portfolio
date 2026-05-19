@@ -114,7 +114,12 @@ fig_conc.update_traces(hovertemplate="<b>%{y}</b><br>Weight: %{x:.2f}%<extra></e
 fig_conc.add_vline(x=10, line_dash='dash', line_color=COLORS['warning'],
                    annotation_text='10% threshold', annotation_position='top right')
 apply_plotly_theme(fig_conc)
-fig_conc.update_layout(yaxis=dict(autorange='reversed'), hovermode='closest')
+fig_conc.update_layout(
+    yaxis=dict(autorange='reversed'),
+    hovermode='closest',
+    xaxis_title='Portfolio Weight (%)',
+    yaxis_title='',
+)
 st.plotly_chart(fig_conc, use_container_width=True)
 
 display_table(df_conc, {
