@@ -67,7 +67,7 @@ if not df_years.empty:
         yaxis_title=f'Equity ({BASE_CURRENCY})',
         yaxis2_title='Return (%)',
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, theme=None)
 
     st.subheader("Yearly Summary")
     display_table(df_years, {
@@ -112,7 +112,7 @@ if selected_year:
             title=f"Performance Contribution ({selected_year})",
         )
         apply_plotly_theme(fig_tree)
-        st.plotly_chart(fig_tree, use_container_width=True)
+        st.plotly_chart(fig_tree, use_container_width=True, theme=None)
 
         display_table(df_contrib, {
             "Symbol": text_col("Instrument"),

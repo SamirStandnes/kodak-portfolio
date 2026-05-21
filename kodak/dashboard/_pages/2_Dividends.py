@@ -58,7 +58,7 @@ with tab1:
             showlegend=False, hovermode='closest',
             xaxis_title='', yaxis_title=BASE_CURRENCY,
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, theme=None)
 
 with tab2:
     tcol1, tcol2 = st.columns(2)

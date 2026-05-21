@@ -120,7 +120,7 @@ fig_conc.update_layout(
     xaxis_title='Portfolio Weight (%)',
     yaxis_title='',
 )
-st.plotly_chart(fig_conc, use_container_width=True)
+st.plotly_chart(fig_conc, use_container_width=True, theme=None)
 
 display_table(df_conc, {
     "Market Value": number_col(f"Value ({BASE_CURRENCY})"),
@@ -140,7 +140,7 @@ with ccol1:
     fig_curr = px.pie(df_curr, values='Market Value', names='Currency',
                       color_discrete_sequence=palette, hole=0.4, title='Currency Split')
     apply_plotly_theme(fig_curr)
-    st.plotly_chart(fig_curr, use_container_width=True)
+    st.plotly_chart(fig_curr, use_container_width=True, theme=None)
 
 with ccol2:
     display_table(df_curr, {
@@ -161,7 +161,7 @@ with scol1:
     fig_sec = px.pie(df_sector, values='Market Value', names='Sector',
                      color_discrete_sequence=palette, hole=0.4, title='Sector Split')
     apply_plotly_theme(fig_sec)
-    st.plotly_chart(fig_sec, use_container_width=True)
+    st.plotly_chart(fig_sec, use_container_width=True, theme=None)
 
 with scol2:
     display_table(df_sector, {
@@ -182,7 +182,7 @@ with gcol1:
     fig_geo = px.pie(df_geo, values='Market Value', names='Country',
                      color_discrete_sequence=palette, hole=0.4, title='Country Split')
     apply_plotly_theme(fig_geo)
-    st.plotly_chart(fig_geo, use_container_width=True)
+    st.plotly_chart(fig_geo, use_container_width=True, theme=None)
 
 with gcol2:
     display_table(df_geo, {

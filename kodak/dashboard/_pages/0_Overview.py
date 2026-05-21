@@ -116,14 +116,14 @@ if not df_alloc.empty:
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["Sector", "Region", "Currency", "Asset Class", "Country"])
 
     with tab1:
-        st.plotly_chart(make_pie(df_alloc, 'Sector', 'By Sector'), use_container_width=True)
+        st.plotly_chart(make_pie(df_alloc, 'Sector', 'By Sector'), use_container_width=True, theme=None)
     with tab2:
-        st.plotly_chart(make_pie(df_alloc, 'Region', 'By Region'), use_container_width=True)
+        st.plotly_chart(make_pie(df_alloc, 'Region', 'By Region'), use_container_width=True, theme=None)
     with tab3:
-        st.plotly_chart(make_pie(df_alloc, 'Currency', 'By Currency'), use_container_width=True)
+        st.plotly_chart(make_pie(df_alloc, 'Currency', 'By Currency'), use_container_width=True, theme=None)
     with tab4:
-        st.plotly_chart(make_pie(df_alloc, 'Asset Class', 'By Asset Class'), use_container_width=True)
+        st.plotly_chart(make_pie(df_alloc, 'Asset Class', 'By Asset Class'), use_container_width=True, theme=None)
     with tab5:
-        st.plotly_chart(make_pie(df_alloc, 'Country', 'By Country'), use_container_width=True)
+        st.plotly_chart(make_pie(df_alloc, 'Country', 'By Country'), use_container_width=True, theme=None)
 else:
     st.info("No allocation data available.")

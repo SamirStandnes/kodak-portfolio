@@ -53,7 +53,7 @@ with tab1:
                 showlegend=False, hovermode='closest',
                 xaxis_title='', yaxis_title=BASE_CURRENCY,
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, theme=None)
     with tcol2:
         st.caption("By Currency")
         display_table(df_currency, {

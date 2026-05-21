@@ -147,7 +147,7 @@ if not df.empty:
         xaxis_title=f'Market Value ({BASE_CURRENCY})',
         yaxis_title='',
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, theme=None)
 
 st.divider()
 
