@@ -122,7 +122,7 @@ def apply_theme():
                            background-clip: text; letter-spacing: 0.18em;">KODAK</h2>
                 <p style="color: #8B949E; font-size: 0.65rem; margin: 2px 0 0 0;
                           letter-spacing: 0.2em; text-transform: uppercase;
-                          font-family: 'JetBrains Mono', monospace;">Portfolio · v2</p>
+                          font-family: 'JetBrains Mono', monospace;">Portfolio · v3-deploy-test-A</p>
             </div>
             """,
             unsafe_allow_html=True,
