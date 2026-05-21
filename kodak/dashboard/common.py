@@ -290,6 +290,18 @@ def display_aggrid(df, columns: dict | None = None, height: int = TABLE_HEIGHT, 
 
     grid_options = gb.build()
 
+    # AG-Grid renders inside an iframe, so the global ::-webkit-scrollbar CSS in
+    # style.py doesn't reach it. Inject matching dark-theme scrollbar rules here.
+    aggrid_scrollbar_css = {
+        "::-webkit-scrollbar": {"width": "8px !important", "height": "8px !important"},
+        "::-webkit-scrollbar-track": {"background": "#0B0E13 !important"},
+        "::-webkit-scrollbar-thumb": {"background": "#30363D !important", "border-radius": "4px !important"},
+        "::-webkit-scrollbar-thumb:hover": {"background": "#484F58 !important"},
+        ".ag-body-horizontal-scroll-viewport, .ag-body-vertical-scroll-viewport": {
+            "scrollbar-width": "thin", "scrollbar-color": "#30363D #0B0E13",
+        },
+    }
+
     return AgGrid(
         df,
         gridOptions=grid_options,
@@ -297,6 +309,7 @@ def display_aggrid(df, columns: dict | None = None, height: int = TABLE_HEIGHT, 
         height=height,
         allow_unsafe_jscode=True,
         update_mode="NO_UPDATE",
+        custom_css=aggrid_scrollbar_css,
     )
 
 
