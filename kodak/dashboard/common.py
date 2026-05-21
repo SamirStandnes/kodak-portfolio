@@ -318,6 +318,12 @@ def date_col(label: str = "Date", fmt: str = "YYYY-MM-DD") -> st.column_config.D
 def apply_plotly_theme(fig: go.Figure) -> go.Figure:
     """Apply consistent Plotly styling to a figure."""
     fig.update_layout(**PLOTLY_LAYOUT)
+    # Defensive: if no chart title has been set, force title.text to an empty
+    # string. Plotly.js renders the literal placeholder "undefined" when
+    # title.text is missing on the JS side, and Streamlit's plotly theme can
+    # wrap that in <b><b>…</b></b>. An explicit "" suppresses both.
+    if fig.layout.title.text is None:
+        fig.update_layout(title_text="")
     return fig
 
 
