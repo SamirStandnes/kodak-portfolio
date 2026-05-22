@@ -27,6 +27,7 @@ def load_config() -> Dict[str, Any]:
             'TILDELING INNLEGG RE',
             'BYTTE INNLEGG VP',
             'EMISJON INNLEGG VP',
+            'UTSKILLING FISJON IN',
         ],
         'outflow': [
             'SELL',
