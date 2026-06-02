@@ -20,6 +20,13 @@ st.set_page_config(
     layout="wide", initial_sidebar_state="expanded",
 )
 
+# Inject the theme once, up front — before any page body renders — so the
+# dark theme is in the DOM on the first paint instead of snapping in
+# mid-page on every navigation.
+from kodak.dashboard.style import inject_global_css, render_sidebar_brand
+inject_global_css()
+render_sidebar_brand()
+
 _PAGES_DIR = Path(__file__).parent / "_pages"
 
 nav = st.navigation([

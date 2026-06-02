@@ -87,10 +87,12 @@ def check_auth():
 
 
 def page_setup(title: str, icon: str):
-    """Per-page setup: apply theme + render header. Auth and set_page_config
-    are handled by the entry-point router (Home.py)."""
-    from kodak.dashboard.style import apply_theme, page_header
-    apply_theme()
+    """Per-page setup: render the page header.
+
+    The theme CSS and sidebar branding are injected once by the entry-point
+    router (Home.py) so they're in place before any page body renders.
+    """
+    from kodak.dashboard.style import page_header
     page_header(f"{icon} {title}")
 
 

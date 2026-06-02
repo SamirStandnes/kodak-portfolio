@@ -106,11 +106,20 @@ PLOTLY_LAYOUT = get_plotly_layout()
 
 # ---------------------------------------------------------------------------
 # THEME APPLICATION
-# Called from common.page_setup() after st.set_page_config().
+# Injected once from the entry-point (Home.py) after st.set_page_config().
 # ---------------------------------------------------------------------------
-def apply_theme():
-    """Inject custom CSS, fonts, and sidebar branding."""
+def inject_global_css():
+    """Inject the global stylesheet + fonts.
+
+    Called once from the entry-point (Home.py) before the page body renders,
+    so the <style> block is first in the DOM and the theme applies on the
+    initial paint — no flash of unstyled content between reruns.
+    """
     st.markdown(_FONTS_AND_CSS, unsafe_allow_html=True)
+
+
+def render_sidebar_brand():
+    """Render the KODAK sidebar header. Called once from the entry-point."""
     with st.sidebar:
         st.markdown(
             """
@@ -128,6 +137,16 @@ def apply_theme():
             unsafe_allow_html=True,
         )
         st.markdown("<hr style='margin: 0.5rem 0 !important;'>", unsafe_allow_html=True)
+
+
+def apply_theme():
+    """Backwards-compatible wrapper: inject CSS + sidebar branding together.
+
+    Prefer calling inject_global_css() / render_sidebar_brand() once from the
+    entry-point. Kept so any external caller keeps working.
+    """
+    inject_global_css()
+    render_sidebar_brand()
 
 
 def page_header(title: str, description: str = ""):
@@ -192,15 +211,23 @@ html, body, [class*="css"], .stApp, .block-container {
     font-feature-settings: "tnum";
 }
 
-/* ===== FADE IN ===== */
+/* Paint the final background immediately so there's never a flash of a
+   lighter default surface before the theme settles. */
+.stApp { background-color: #0B0E13; }
+
+/* ===== FADE IN =====
+   Opacity-only and short. The previous version slid the whole page up 6px
+   on every rerun (each navigation / widget interaction), which read as a
+   visible "jump" / stutter. A quick fade with no transform keeps the entry
+   feeling smooth without re-animating layout on every interaction. */
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(6px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; }
+    to   { opacity: 1; }
 }
 .block-container {
     padding-top: 2rem;
     padding-bottom: 2rem;
-    animation: fadeIn 0.35s ease-out;
+    animation: fadeIn 0.15s ease-out;
     max-width: 1400px;
 }
 
