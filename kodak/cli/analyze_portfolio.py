@@ -1,5 +1,6 @@
 import argparse
 import json
+from datetime import date
 import pandas as pd
 from kodak.shared.db import get_connection, execute_query
 from kodak.shared.market_data import get_latest_prices, get_exchange_rate
@@ -138,6 +139,9 @@ def export_holdings_json(output_path: str) -> None:
     ]
 
     output = {
+        # Stamp the date into the file: downstream hosts (Vercel) reset file
+        # mtimes, so the website can't rely on the filesystem timestamp.
+        'last_updated': date.today().isoformat(),
         'holdings': holdings,
         'total_market_value': round(summary['total_market_value'], 0),
         'total_cost_basis': round(summary['total_cost_basis'], 0),
