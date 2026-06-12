@@ -8,7 +8,9 @@ yfinance
 openpyxl
 
 # Dashboard
-streamlit
+# Pinned: every Heroku rebuild installs fresh, and unpinned streamlit pulled in
+# a breaking upgrade (1.52 st.Page path resolution). Bump deliberately.
+streamlit~=1.52.2
 streamlit-aggrid
 plotly
 

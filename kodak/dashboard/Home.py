@@ -20,7 +20,10 @@ st.set_page_config(
     layout="wide", initial_sidebar_state="expanded",
 )
 
-_PAGES_DIR = Path(__file__).parent / "_pages"
+# resolve() is required: when launched via a relative path (Procfile, CLI),
+# __file__ is relative and st.Page would resolve pages against the main
+# script's parent, doubling the path and crashing with "could not be found".
+_PAGES_DIR = Path(__file__).resolve().parent / "_pages"
 
 nav = st.navigation([
     st.Page(str(_PAGES_DIR / "0_Overview.py"),    title="Overview",    icon="📈", default=True),
