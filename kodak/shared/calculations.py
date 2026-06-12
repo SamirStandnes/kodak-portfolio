@@ -146,21 +146,54 @@ def xirr(transactions: List[Tuple[datetime, float]]) -> float:
     if all(a >= 0 for a in amounts) or all(a <= 0 for a in amounts): return 0.0
     dates = [t[0] for t in transactions]; d0 = dates[0]
     years = [(d - d0).days / 365.0 for d in dates]
+
+    def npv(r):
+        r1 = max(1 + r, 1e-9)
+        return sum(a / r1 ** y for a, y in zip(amounts, years))
+
+    # Fast path: Newton-Raphson
     rate = 0.1
     for _ in range(50):
         f = 0.0; df = 0.0
-        for i, year in enumerate(years):
-            a = amounts[i]; r_plus_1 = (1 + rate)
-            if r_plus_1 <= 0: r_plus_1 = 1e-6 
+        for a, year in zip(amounts, years):
+            r_plus_1 = max(1 + rate, 1e-6)
             exp = r_plus_1 ** year
             f += a / exp
             df -= a * year * (r_plus_1 ** (year - 1)) / (exp ** 2)
-        if abs(f) < 1e-6: return float(rate.real) if hasattr(rate, 'real') else float(rate)
+        if abs(f) < 1e-6: return float(rate)
         if df == 0: break
         new_rate = rate - f / df
-        if abs(new_rate - rate) < 1e-6: return float(new_rate.real) if hasattr(new_rate, 'real') else float(new_rate)
+        if abs(new_rate - rate) < 1e-6: return float(new_rate)
         rate = new_rate
-    return float(rate.real) if hasattr(rate, 'real') else float(rate)
+    else:
+        # Newton converged on the last step without triggering either exit check
+        if abs(npv(rate)) < 1e-3: return float(rate)
+
+    # Fallback: bracket a sign change and bisect. Newton can diverge or cycle
+    # on irregular cash flows; bisection is slow but guaranteed once bracketed.
+    lo, hi, steps = -0.9999, 10.0, 110
+    prev_r = lo; prev_f = npv(lo)
+    bracket = None
+    for i in range(1, steps + 1):
+        r = lo + (hi - lo) * i / steps
+        f_r = npv(r)
+        if prev_f * f_r <= 0:
+            bracket = (prev_r, r)
+            break
+        prev_r, prev_f = r, f_r
+    if bracket is None: return 0.0
+
+    a_r, b_r = bracket
+    f_a = npv(a_r)
+    for _ in range(100):
+        mid = (a_r + b_r) / 2
+        f_mid = npv(mid)
+        if abs(f_mid) < 1e-6 or (b_r - a_r) < 1e-9: return float(mid)
+        if f_a * f_mid <= 0:
+            b_r = mid
+        else:
+            a_r, f_a = mid, f_mid
+    return float((a_r + b_r) / 2)
 
 def get_yearly_contribution(target_year: str) -> Tuple[pd.DataFrame, float, List[Dict[str, Any]]]:
     query = """
@@ -172,7 +205,7 @@ def get_yearly_contribution(target_year: str) -> Tuple[pd.DataFrame, float, List
     """
     with get_db_connection() as conn:
         df = query_df(query, conn, params=(f"{target_year}-12-31",))
-    if df.empty: return pd.DataFrame(), 0.0
+    if df.empty: return pd.DataFrame(), 0.0, []
     
     soy_date = f"{int(target_year)-1}-12-31"
     # For current year, use today's date instead of Dec 31
@@ -330,7 +363,7 @@ def get_yearly_equity_curve() -> Tuple[pd.DataFrame, List[Dict[str, Any]]]:
     """
     with get_db_connection() as conn:
         df = query_df(query, conn)
-    if df.empty: return pd.DataFrame()
+    if df.empty: return pd.DataFrame(), []
     df['year'] = df['date'].str[:4]; years = sorted(df['year'].unique())
     split_map = get_internal_splits()
     holdings = {}; cash_balance = 0.0; results = []
@@ -426,8 +459,8 @@ def get_holdings(date: Optional[str] = None) -> pd.DataFrame:
                 total_cost += abs(row['amount_local']) # Should be 0, but add just in case
                 continue
 
-            if any(t in t_type for t in INFLOW_TYPES): total_qty += row['quantity']; total_cost += abs(row['amount_local'])
-            elif any(t in t_type for t in OUTFLOW_TYPES):
+            if t_type in INFLOW_TYPES: total_qty += row['quantity']; total_cost += abs(row['amount_local'])
+            elif t_type in OUTFLOW_TYPES:
                 if total_qty > 0: total_cost -= (total_cost / total_qty) * abs(row['quantity'])
                 total_qty += row['quantity']
         if abs(total_qty) > 0.001: final_holdings.append({'instrument_id': inst_id, 'symbol': first_row['symbol'], 'isin': first_row['isin'], 'quantity': total_qty, 'cost_basis_local': max(0, total_cost)})
@@ -834,19 +867,19 @@ def get_fx_performance():
     Returns a DataFrame.
     """
     # Fetch all transactions in non-base currencies
-    query = f"""
+    query = """
         SELECT
             date,
             currency,
             amount as quantity,
             amount_local
         FROM transactions
-        WHERE currency != '{BASE_CURRENCY}'
+        WHERE currency != ?
         ORDER BY date, id
     """
 
     with get_db_connection() as conn:
-        df = query_df(query, conn)
+        df = query_df(query, conn, params=(BASE_CURRENCY,))
 
     if df.empty:
         return pd.DataFrame()

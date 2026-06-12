@@ -11,7 +11,7 @@ def translate_query(query: str) -> str:
 
     Handles:
     - strftime('%Y', date) -> TO_CHAR(date::date, 'YYYY')
-    - strftime('%J', date) -> EXTRACT(DOY FROM date::date)
+    - strftime('%J', date) -> EXTRACT(EPOCH FROM date::timestamp) / 86400.0
     - date('now', '-12 months') -> CURRENT_DATE - INTERVAL '12 months'
     - INSERT OR REPLACE -> INSERT ... ON CONFLICT DO UPDATE
     - ? placeholders -> %s placeholders
@@ -29,17 +29,18 @@ def translate_query(query: str) -> str:
         result
     )
 
-    # strftime('%J', column) for Julian day -> EXTRACT(DOY FROM column::date)
+    # strftime('%J', x) is SQLite's Julian day — a CONTINUOUS day count.
+    # EXTRACT(DOY ...) resets every year and breaks ABS(a - b) nearest-date
+    # ordering across year boundaries, so translate to epoch days instead.
     result = re.sub(
         r"strftime\s*\(\s*'%J'\s*,\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)",
-        r"EXTRACT(DOY FROM \1::date)",
+        r"(EXTRACT(EPOCH FROM \1::timestamp) / 86400.0)",
         result
     )
 
-    # strftime('%J', ?) -> EXTRACT(DOY FROM %s::date)
     result = re.sub(
         r"strftime\s*\(\s*'%J'\s*,\s*\?\s*\)",
-        r"EXTRACT(DOY FROM %s::date)",
+        r"(EXTRACT(EPOCH FROM %s::timestamp) / 86400.0)",
         result
     )
 
@@ -95,35 +96,21 @@ def fix_group_by_coalesce(query: str) -> str:
     PostgreSQL requires: SELECT COALESCE(a, b) as x ... GROUP BY COALESCE(a, b) or GROUP BY 1
     """
     # Pattern: COALESCE(i.symbol, i.isin) as symbol ... GROUP BY symbol
-    # We'll replace GROUP BY symbol with GROUP BY 1 when we detect this pattern
+    # Handle every COALESCE alias in the query, anywhere in the GROUP BY list.
+    aliases = {
+        m.group(2): f"COALESCE({m.group(1)})"
+        for m in re.finditer(
+            r'COALESCE\s*\(\s*([^)]+)\s*\)\s+as\s+(\w+)', query, re.IGNORECASE)
+    }
+    if not aliases:
+        return query
 
-    # Check if query has COALESCE(...) as symbol pattern
-    coalesce_match = re.search(
-        r'COALESCE\s*\(\s*([^)]+)\s*\)\s+as\s+(\w+)',
-        query,
-        re.IGNORECASE
-    )
+    def expand_aliases(match):
+        items = [item.strip() for item in match.group(2).split(',')]
+        return match.group(1) + ', '.join(aliases.get(item, item) for item in items)
 
-    if coalesce_match:
-        coalesce_expr = f"COALESCE({coalesce_match.group(1)})"
-        alias = coalesce_match.group(2)
-
-        # Check if GROUP BY uses this alias
-        group_by_pattern = re.compile(
-            r'GROUP\s+BY\s+' + re.escape(alias) + r'(?:\s|$|,)',
-            re.IGNORECASE
-        )
-
-        if group_by_pattern.search(query):
-            # Replace GROUP BY alias with GROUP BY COALESCE expression
-            query = re.sub(
-                r'GROUP\s+BY\s+' + re.escape(alias) + r'(?=\s|$|,)',
-                f'GROUP BY {coalesce_expr}',
-                query,
-                flags=re.IGNORECASE
-            )
-
-    return query
+    return re.sub(
+        r'(GROUP\s+BY\s+)([^\n;)]+)', expand_aliases, query, flags=re.IGNORECASE)
 
 
 def fix_group_by_joined_columns(query: str) -> str:

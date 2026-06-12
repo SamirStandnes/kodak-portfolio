@@ -66,6 +66,10 @@ def check_auth():
         .block-container { max-width: 420px; padding-top: 8vh; }
         [data-testid="InputInstructions"] { display: none !important; }
         .stForm [data-testid="stFormSubmitButton"] button { width: 100%; }
+        /* Streamlit frontend race: "Missing Submit Button" flashes on load/reconnect
+           even though the submit button exists (rendered before formsData syncs).
+           The form is the only alert-bearing element inside stForm, so this is safe. */
+        [data-testid="stForm"] [data-testid="stAlert"] { display: none !important; }
         </style>
     """, unsafe_allow_html=True)
 
