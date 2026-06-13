@@ -27,6 +27,23 @@ def setup_path():
 # Run on import so pages just need: from kodak.dashboard.common import *
 _project_root = setup_path()
 
+# Streamlit Community Cloud provides config via st.secrets, NOT as environment
+# variables. The adapter detection below (and config_adapter / db_adapter) keys
+# off os.environ, so bridge the relevant top-level secrets into the environment
+# first. No-op locally / on Heroku, where these come from .env or real env vars.
+try:
+    import streamlit as _st
+    for _key in ("DATABASE_URL", "DASHBOARD_PASSWORD", "BASE_CURRENCY"):
+        if not os.environ.get(_key):
+            try:
+                _val = _st.secrets[_key]
+            except Exception:
+                _val = None
+            if _val is not None:
+                os.environ[_key] = str(_val)
+except Exception:
+    pass
+
 # Auto-detect Heroku: load PostgreSQL adapters before any kodak imports
 _IS_HEROKU = bool(os.environ.get("DATABASE_URL"))
 if _IS_HEROKU:
