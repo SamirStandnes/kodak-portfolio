@@ -75,13 +75,31 @@ Defined in `config.yaml` under `transaction_types`. Three categories:
 
 Parsers must set `currency` to the **asset's** currency, not the settlement currency. Back-calculate `amount` from `amount_local` if needed.
 
-## Heroku Deployment
+## Cloud Deployment (Streamlit Cloud + Neon)
 
-The same codebase runs both locally (SQLite) and on Heroku (PostgreSQL). Detection is automatic via the `DATABASE_URL` environment variable.
+> Migrated off Heroku in June 2026. The hosted dashboard runs **free** on
+> **Streamlit Community Cloud**, backed by a **free Neon Postgres** project,
+> with daily price updates driven by a **GitHub Actions cron**. The `heroku/`
+> directory name is now legacy — those files are still the active adapter
+> layer (they just point at Neon instead of Heroku Postgres).
 
-### How It Works
+The same codebase runs both locally (SQLite) and in the cloud (PostgreSQL).
+Detection is automatic via the `DATABASE_URL` environment variable.
 
-1. **`kodak/dashboard/common.py`** detects `DATABASE_URL` at import time
+### Where things run
+
+| Concern | Service | Notes |
+|---|---|---|
+| Dashboard hosting | **Streamlit Community Cloud** | App: `kodak-portfolio.streamlit.app`, entry `kodak/dashboard/Home.py`, branch `master`, Python 3.11+ |
+| Database | **Neon Postgres** (dedicated project) | Free tier. Separate from any other Neon project — keep Kodak isolated |
+| Daily price update | **GitHub Actions** (`.github/workflows/update-prices.yml`) | Cron 22:00 UTC weekdays; replaces Heroku Scheduler |
+| Source of truth | **local SQLite** (`database/portfolio.db`) | Transactions are managed locally, then pushed to Neon |
+
+### How the adapter swap works
+
+1. **`kodak/dashboard/common.py`** bridges `st.secrets` → `os.environ` (Streamlit
+   Cloud exposes config via `st.secrets`, *not* as env vars), then detects
+   `DATABASE_URL` at import time.
 2. If present, it imports `heroku/setup_adapters.py` which monkey-patches `sys.modules`:
    - `kodak.shared.db` → `heroku/db_adapter.py` (PostgreSQL via psycopg2)
    - `kodak.shared.utils` → `heroku/config_adapter.py` (env vars instead of config.yaml)
@@ -90,32 +108,41 @@ The same codebase runs both locally (SQLite) and on Heroku (PostgreSQL). Detecti
 
 ### Key Files
 
+- **`kodak/dashboard/common.py`** — `st.secrets`→env bridge + adapter bootstrap
 - **`heroku/setup_adapters.py`** — Module patching (must load before any kodak imports)
 - **`heroku/db_adapter.py`** — PostgreSQL connection adapter (same API as `kodak/shared/db.py`)
 - **`heroku/config_adapter.py`** — Config from env vars (replaces `config.yaml`)
 - **`heroku/sql_compat.py`** — SQL translation layer (301 lines)
-- **`heroku/scripts/migrate_db.py`** — One-way SQLite → PostgreSQL migration
-- **`heroku/scripts/update_prices.py`** — Daily price updater (Heroku Scheduler)
+- **`heroku/scripts/migrate_db.py`** — One-way SQLite → PostgreSQL migration (**drops & recreates** the 5 Kodak tables, then reloads from SQLite)
+- **`heroku/scripts/update_prices.py`** — Daily price/FX updater; run by the GitHub Actions cron
+- **`.github/workflows/update-prices.yml`** — the cron that runs `update_prices.py` against Neon
 
-### Heroku-Only Features
+### Secrets / config
 
-- **Password auth**: `DASHBOARD_PASSWORD` env var → login screen on all pages
+**Streamlit Cloud** (app → Settings → Secrets), TOML — see `.streamlit/secrets.toml.example`:
+```toml
+DATABASE_URL = "postgresql://...neon.tech/neondb?sslmode=require&channel_binding=require"
+DASHBOARD_PASSWORD = "<login password>"   # presence enables the auth gate
+BASE_CURRENCY = "NOK"
+```
+**GitHub Actions** (repo → Settings → Secrets): `DATABASE_URL` (the Neon URL). `BASE_CURRENCY` is hardcoded to `NOK` in the workflow.
+
+**Local** (`.env`, gitignored): `DATABASE_URL` points at Neon so `deploy_data.ps1` pushes there.
+
+### Pushing local data to the cloud
+
+```powershell
+.\workflows\deploy_data.ps1   # migrates local SQLite -> Neon (reads DATABASE_URL from .env)
+```
+Because `migrate_db.py` drops & recreates, this overwrites prices the cron added;
+the next cron run repopulates them (cosmetic gap only).
 
 ### Entry Point
 
-```
-Procfile: web: streamlit run kodak/dashboard/Home.py --server.port=$PORT ...
-```
-
-Both local and Heroku use the same entry point (`kodak/dashboard/Home.py`) and modular pages (`kodak/dashboard/pages/`). The old monolithic `heroku/app.py` is deprecated.
-
-### Environment Variables (Heroku)
-
-```bash
-heroku config:set DATABASE_URL=<auto-set by Heroku Postgres addon>
-heroku config:set DASHBOARD_PASSWORD=<your password>
-heroku config:set BASE_CURRENCY=NOK
-```
+Both local and cloud use the same entry point (`kodak/dashboard/Home.py`) and
+modular pages (`kodak/dashboard/_pages/`). The old monolithic `heroku/app.py`
+and the `Procfile` (`web: streamlit run kodak/dashboard/Home.py ...`) are Heroku
+leftovers, no longer used by Streamlit Cloud.
 
 ## Code Conventions
 
