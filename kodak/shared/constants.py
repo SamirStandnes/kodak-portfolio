@@ -5,7 +5,9 @@ kodak.dashboard.style — that module is the single source of truth.
 """
 
 # Dashboard
-CACHE_TTL = 300  # 5 minutes
+CACHE_TTL = 1800  # 30 minutes — portfolio data refreshes once daily (price
+# cron at 22:00 UTC), so a long TTL keeps the dashboard warm and avoids
+# re-querying Neon cross-region on every visit. Bump down if data feels stale.
 TABLE_HEIGHT = 600
 MIN_QUANTITY_THRESHOLD = 0.001
 
