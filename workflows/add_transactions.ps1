@@ -53,12 +53,12 @@ if ($confirmation -eq 'y') {
     Write-Host "`n[7/8] Pushing to Kodak Heroku dashboard..." -ForegroundColor Yellow
     $EnvFile = Join-Path $PSScriptRoot "..\.env"
     if (-not (Test-Path $EnvFile)) {
-        Write-Host "[WARN] No .env found at $EnvFile — skipping Heroku push. Website will show stale data." -ForegroundColor Yellow
+        Write-Host "[WARN] No .env found at $EnvFile - skipping Heroku push. Website will show stale data." -ForegroundColor Yellow
     } else {
         # Load DATABASE_URL from .env (line format: KEY=value)
         $DatabaseUrl = (Get-Content $EnvFile | Where-Object { $_ -match '^DATABASE_URL=' } | Select-Object -First 1) -replace '^DATABASE_URL=', ''
         if (-not $DatabaseUrl) {
-            Write-Host "[WARN] DATABASE_URL not in .env — skipping Heroku push." -ForegroundColor Yellow
+            Write-Host "[WARN] DATABASE_URL not in .env - skipping Heroku push." -ForegroundColor Yellow
         } else {
             $env:DATABASE_URL = $DatabaseUrl
             python -m heroku.scripts.migrate_db --sqlite database/portfolio.db
@@ -68,7 +68,7 @@ if ($confirmation -eq 'y') {
                 if (Get-Command heroku -ErrorAction SilentlyContinue) {
                     heroku restart -a kodak-portfolio 2>$null
                     if ($LASTEXITCODE -eq 0) {
-                        Write-Host "[OK] Heroku dyno restarted — website refreshes immediately on next visit." -ForegroundColor Green
+                        Write-Host "[OK] Heroku dyno restarted - website refreshes immediately on next visit." -ForegroundColor Green
                     }
                 }
             } else {
@@ -81,7 +81,7 @@ if ($confirmation -eq 'y') {
     Write-Host "`n[8/8] Syncing to oceanview (samirstandnes.com)..." -ForegroundColor Yellow
     $OceanviewDir = "C:\Users\Samir\oceanview"
     if (-not (Test-Path $OceanviewDir)) {
-        Write-Host "[WARN] oceanview repo not found at $OceanviewDir — skipping website sync." -ForegroundColor Yellow
+        Write-Host "[WARN] oceanview repo not found at $OceanviewDir - skipping website sync." -ForegroundColor Yellow
     } else {
         Copy-Item "data\holdings.json" "$OceanviewDir\data\holdings.json" -Force
         Copy-Item "data\performance.json" "$OceanviewDir\data\performance.json" -Force
@@ -89,7 +89,7 @@ if ($confirmation -eq 'y') {
         try {
             $Changed = git status --porcelain data/holdings.json data/performance.json 2>$null
             if (-not $Changed) {
-                Write-Host "[OK] Holdings/performance unchanged — nothing to deploy." -ForegroundColor Green
+                Write-Host "[OK] Holdings/performance unchanged - nothing to deploy." -ForegroundColor Green
             } else {
                 git add data/holdings.json data/performance.json
                 $CommitMsg = "Update portfolio data from Kodak ($(Get-Date -Format 'd MMM yyyy'))"

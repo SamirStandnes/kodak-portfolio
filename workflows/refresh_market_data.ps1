@@ -1,4 +1,4 @@
-# refresh_market_data.ps1
+﻿# refresh_market_data.ps1
 # Quick update for market prices and metadata only (no new transactions).
 
 $ErrorActionPreference = "Stop"
@@ -21,7 +21,7 @@ python -m kodak.cli.analyze_portfolio --json data/holdings.json
 Write-Host "`n[4/4] Syncing to oceanview (samirstandnes.com)..." -ForegroundColor Yellow
 $OceanviewDir = "C:\Users\Samir\oceanview"
 if (-not (Test-Path $OceanviewDir)) {
-    Write-Host "[WARN] oceanview repo not found at $OceanviewDir — skipping website sync." -ForegroundColor Yellow
+    Write-Host "[WARN] oceanview repo not found at $OceanviewDir - skipping website sync." -ForegroundColor Yellow
 } else {
     Copy-Item "data\holdings.json" "$OceanviewDir\data\holdings.json" -Force
     Copy-Item "data\performance.json" "$OceanviewDir\data\performance.json" -Force
@@ -29,7 +29,7 @@ if (-not (Test-Path $OceanviewDir)) {
     try {
         $Changed = git status --porcelain data/holdings.json data/performance.json 2>$null
         if (-not $Changed) {
-            Write-Host "[OK] Holdings/performance unchanged — nothing to deploy." -ForegroundColor Green
+            Write-Host "[OK] Holdings/performance unchanged - nothing to deploy." -ForegroundColor Green
         } else {
             git add data/holdings.json data/performance.json
             git commit -m "Update portfolio data from Kodak ($(Get-Date -Format 'd MMM yyyy'))"
