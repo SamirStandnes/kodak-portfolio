@@ -43,16 +43,29 @@ def _append_placeholder_accounts(unknown_accs):
 
 
 def _looks_like_name(value):
-    """A Yahoo ticker never contains spaces (e.g. AENA.MC, BRK-B, XCS3.DE,
-    0P0001K6NJ.IR). Display names from broker exports do
-    (e.g. "Xtrackers MSCI Malaysia UCITS ETF 1C"). If we get a name into
-    the symbol column, Yahoo can't resolve it and price fetches silently
-    produce zero market value.
+    """Heuristic: does this value look like a broker display name rather than a
+    Yahoo ticker? If a name lands in the symbol column, Yahoo can't resolve it
+    and price fetches silently produce zero market value.
+
+    Yahoo tickers are upper-case alphanumerics with '.', '-' or '/' separators
+    (AENA.MC, BRK-B, XCS3.DE, 0P0001K6NJ.IR, AMZN, ADBE, SPCX). Display names
+    differ in one of two ways:
+      * multi-word, so they contain a space ("Xtrackers MSCI Malaysia ETF 1C"),
+      * OR single-word but mixed/lower case ("Adobe", "SpaceX", "Tesla"), which
+        a real ticker never is.
+    Both Adobe (US00724F1012) and SpaceX (US84615Q1031) reached us as single
+    upper-camel words and slipped past the old space-only check, so we now also
+    flag any value containing a lower-case letter.
     """
     if value is None:
         return False
     s = str(value).strip()
-    return bool(s) and ' ' in s
+    if not s:
+        return False
+    if ' ' in s:
+        return True
+    # A real ticker is all upper-case; a lower-case letter signals a name.
+    return any(ch.islower() for ch in s)
 
 
 def _append_placeholder_instruments(df, unknown_isins):
