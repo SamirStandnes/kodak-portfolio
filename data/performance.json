@@ -22,7 +22,7 @@
     },
     {
       "year": "2024",
-      "return_pct": 34.5
+      "return_pct": 35.5
     },
     {
       "year": "2025",
@@ -30,8 +30,8 @@
     },
     {
       "year": "2026",
-      "return_pct": -1.6
+      "return_pct": 5.7
     }
   ],
-  "total_xirr": 17.7
+  "total_xirr": 18.9
 }
