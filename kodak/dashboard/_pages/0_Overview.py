@@ -52,17 +52,26 @@ def load_summary_data():
             price = mkt['price']
             curr = mkt['currency']
             val = row['quantity'] * convert_to_base(price, curr, fx_cache)
-            total_market_value += val
-            total_cost += row['cost_basis_local']
+        else:
+            # No current market price (illiquid/private holding, or prices not
+            # yet populated in this DB) — carry the position at cost basis so it
+            # still appears in allocation instead of being silently dropped.
+            # Without this, a momentarily empty market_prices table makes EVERY
+            # holding vanish and the page shows "No allocation data available"
+            # even though the portfolio plainly exists.
+            val = row['cost_basis_local']
 
-            allocation_data.append({
-                'Market Value': val,
-                'Sector': meta.get('sector') or 'Unknown',
-                'Region': meta.get('region') or 'Unknown',
-                'Country': meta.get('country') or 'Unknown',
-                'Asset Class': meta.get('asset_class') or 'Equity',
-                'Currency': meta.get('currency') or 'Unknown',
-            })
+        total_market_value += val
+        total_cost += row['cost_basis_local']
+
+        allocation_data.append({
+            'Market Value': val,
+            'Sector': meta.get('sector') or 'Unknown',
+            'Region': meta.get('region') or 'Unknown',
+            'Country': meta.get('country') or 'Unknown',
+            'Asset Class': meta.get('asset_class') or 'Equity',
+            'Currency': meta.get('currency') or 'Unknown',
+        })
 
     total_cash_base = query_df(
         "SELECT COALESCE(SUM(amount_local), 0) as total FROM transactions", conn
