@@ -42,7 +42,6 @@ def load_holdings_data():
         JOIN instruments i ON latest.instrument_id = i.id
         WHERE latest.rn = 1
     ''', conn)
-    conn.close()
 
     price_map = {}
     for _, row in prices.iterrows():
@@ -59,6 +58,14 @@ def load_holdings_data():
             'day_change_pct': day_change_pct,
         }
 
+    # Instrument metadata for ALL instruments — used to label holdings that
+    # have no current market_prices row (the price join above excludes them).
+    meta = query_df(
+        'SELECT id, sector, region, country, asset_class FROM instruments', conn
+    )
+    meta_map = meta.set_index('id').to_dict('index')
+    conn.close()
+
     data = []
     fx_cache = {}
     total_val = 0
@@ -67,16 +74,31 @@ def load_holdings_data():
     for _, row in df_holdings.iterrows():
         inst_id = row['instrument_id']
         mkt = price_map.get(inst_id)
-        if not mkt:
-            continue
-
-        price = mkt['price']
-        curr = mkt['currency']
-        market_val = row['quantity'] * convert_to_base(price, curr, fx_cache)
+        m = meta_map.get(inst_id, {})
         cost_basis = row['cost_basis_local']
+
+        if mkt:
+            price = mkt['price']
+            curr = mkt['currency']
+            market_val = row['quantity'] * convert_to_base(price, curr, fx_cache)
+            sector, region = mkt['sector'], mkt['region']
+            country, asset_class = mkt['country'], mkt['asset_class']
+            day_pct = mkt['day_change_pct']
+        else:
+            # No current market price (illiquid/private holding, or prices not
+            # yet populated in this DB — e.g. right after a deploy drops &
+            # recreates market_prices, before the price cron repopulates).
+            # Carry the position at cost basis so it still appears instead of
+            # silently vanishing and leaving an empty, column-less DataFrame
+            # that crashes sort_values('Market Value'). Self-heals to live
+            # prices once market_prices is populated.
+            market_val = cost_basis
+            sector, region = m.get('sector'), m.get('region')
+            country, asset_class = m.get('country'), m.get('asset_class')
+            day_pct = None
+
         gain = market_val - cost_basis
         ret_pct = (market_val / cost_basis - 1) * 100 if cost_basis > 0 else 0
-        day_pct = mkt['day_change_pct']
         day_value = market_val * (day_pct / 100) if day_pct is not None else 0
 
         total_val += market_val
@@ -85,10 +107,10 @@ def load_holdings_data():
         data.append({
             "Symbol": row['symbol'],
             "Quantity": round(row['quantity']),
-            "Sector": mkt['sector'],
-            "Region": mkt['region'],
-            "Country": mkt['country'],
-            "Type": mkt['asset_class'],
+            "Sector": sector,
+            "Region": region,
+            "Country": country,
+            "Type": asset_class,
             "Market Value": round(market_val),
             "Day %": day_pct,
             "Day Δ": round(day_value),
@@ -96,9 +118,11 @@ def load_holdings_data():
             "Return %": ret_pct,
         })
 
-    df = pd.DataFrame(data)
+    columns = ["Symbol", "Quantity", "Sector", "Region", "Country", "Type",
+               "Market Value", "Day %", "Day Δ", "Gain/Loss", "Return %", "Weight %"]
+    df = pd.DataFrame(data, columns=columns)
     if not df.empty:
-        df['Weight %'] = (df['Market Value'] / total_val) * 100
+        df['Weight %'] = (df['Market Value'] / total_val) * 100 if total_val else 0
     return df.sort_values('Market Value', ascending=False), total_val, total_day_change_value
 
 
