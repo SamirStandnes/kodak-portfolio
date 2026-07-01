@@ -15,7 +15,15 @@ python -m kodak.pipeline.fetch_prices
 # 3. Export Performance & Holdings JSON
 Write-Host "`n[3/4] Exporting performance and holdings data..." -ForegroundColor Yellow
 python -m kodak.cli.performance_report --json data/performance.json
+if ($LASTEXITCODE -ne 0) { throw "performance_report export failed (exit $LASTEXITCODE) - aborting before stale-data sync." }
+# Retry analyze_portfolio once: it occasionally dies on a transient python subprocess/alias error,
+# which previously left a stale holdings.json to sync silently.
 python -m kodak.cli.analyze_portfolio --json data/holdings.json
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[WARN] analyze_portfolio failed (exit $LASTEXITCODE) - retrying once..." -ForegroundColor Yellow
+    python -m kodak.cli.analyze_portfolio --json data/holdings.json
+    if ($LASTEXITCODE -ne 0) { throw "analyze_portfolio (holdings.json) export failed twice (exit $LASTEXITCODE) - aborting before stale-data sync." }
+}
 
 # 4. Sync to oceanview (samirstandnes.com/portfolio) and deploy
 Write-Host "`n[4/4] Syncing to oceanview (samirstandnes.com)..." -ForegroundColor Yellow
