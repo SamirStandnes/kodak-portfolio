@@ -49,36 +49,10 @@ if ($confirmation -eq 'y') {
     python -m kodak.cli.performance_report --json data/performance.json
     python -m kodak.cli.analyze_portfolio --json data/holdings.json
 
-    # 7. Push to Heroku (Kodak dashboard at kodak-portfolio.herokuapp.com)
-    Write-Host "`n[7/8] Pushing to Kodak Heroku dashboard..." -ForegroundColor Yellow
-    $EnvFile = Join-Path $PSScriptRoot "..\.env"
-    if (-not (Test-Path $EnvFile)) {
-        Write-Host "[WARN] No .env found at $EnvFile - skipping Heroku push. Website will show stale data." -ForegroundColor Yellow
-    } else {
-        # Load DATABASE_URL from .env (line format: KEY=value)
-        $DatabaseUrl = (Get-Content $EnvFile | Where-Object { $_ -match '^DATABASE_URL=' } | Select-Object -First 1) -replace '^DATABASE_URL=', ''
-        if (-not $DatabaseUrl) {
-            Write-Host "[WARN] DATABASE_URL not in .env - skipping Heroku push." -ForegroundColor Yellow
-        } else {
-            $env:DATABASE_URL = $DatabaseUrl
-            python -m heroku.scripts.migrate_db --sqlite database/portfolio.db
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "[OK] Heroku DB updated. Website cache regenerates within 5 min (or restart dyno for instant refresh)." -ForegroundColor Green
-                # Try to restart dyno if heroku CLI is authenticated (optional, non-blocking)
-                if (Get-Command heroku -ErrorAction SilentlyContinue) {
-                    heroku restart -a kodak-portfolio 2>$null
-                    if ($LASTEXITCODE -eq 0) {
-                        Write-Host "[OK] Heroku dyno restarted - website refreshes immediately on next visit." -ForegroundColor Green
-                    }
-                }
-            } else {
-                Write-Host "[ERROR] Heroku migration failed. Website will show stale data." -ForegroundColor Red
-            }
-        }
-    }
-
-    # 8. Sync holdings/performance to oceanview (samirstandnes.com/portfolio) and deploy
-    Write-Host "`n[8/8] Syncing to oceanview (samirstandnes.com)..." -ForegroundColor Yellow
+    # 7. Sync holdings/performance to oceanview (samirstandnes.com/portfolio) and deploy
+    # Keep this before the cloud dashboard push so the public portfolio page is updated
+    # even if the database migration is slow or fails.
+    Write-Host "`n[7/8] Syncing to oceanview (samirstandnes.com)..." -ForegroundColor Yellow
     $OceanviewDir = "C:\Users\Samir\oceanview"
     if (-not (Test-Path $OceanviewDir)) {
         Write-Host "[WARN] oceanview repo not found at $OceanviewDir - skipping website sync." -ForegroundColor Yellow
@@ -103,6 +77,20 @@ if ($confirmation -eq 'y') {
             }
         } finally {
             Pop-Location
+        }
+    }
+
+    # 8. Push to hosted Kodak dashboard (Streamlit Cloud + Neon)
+    Write-Host "`n[8/8] Pushing to hosted Kodak dashboard..." -ForegroundColor Yellow
+    $DeployScript = Join-Path $PSScriptRoot "deploy_data.ps1"
+    if (-not (Test-Path $DeployScript)) {
+        Write-Host "[WARN] deploy_data.ps1 not found - skipping dashboard database push." -ForegroundColor Yellow
+    } else {
+        & $DeployScript
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "[OK] Hosted dashboard database updated." -ForegroundColor Green
+        } else {
+            Write-Host "[ERROR] Dashboard database push failed. Oceanview was already synced." -ForegroundColor Red
         }
     }
 

@@ -1,5 +1,5 @@
-# Deploy Data to Heroku
-# This script migrates the local SQLite database to the Heroku PostgreSQL database.
+# Deploy Data to hosted Kodak dashboard
+# This script migrates the local SQLite database to the hosted PostgreSQL database.
 
 $ErrorActionPreference = "Stop"
 
@@ -32,9 +32,9 @@ if (-not $env:DATABASE_URL) {
 }
 
 # Run the migration
-Write-Host "Starting migration to Heroku..." -ForegroundColor Cyan
+Write-Host "Starting migration to hosted PostgreSQL..." -ForegroundColor Cyan
 Write-Host "Source: database/portfolio.db"
-Write-Host "Destination: Heroku PostgreSQL"
+Write-Host "Destination: Hosted PostgreSQL"
 
 $migrationCommand = "python -m heroku.scripts.migrate_db --sqlite database/portfolio.db"
 Invoke-Expression $migrationCommand
