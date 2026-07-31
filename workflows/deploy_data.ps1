@@ -36,11 +36,14 @@ Write-Host "Starting migration to hosted PostgreSQL..." -ForegroundColor Cyan
 Write-Host "Source: database/portfolio.db"
 Write-Host "Destination: Hosted PostgreSQL"
 
-$migrationCommand = "python -m heroku.scripts.migrate_db --sqlite database/portfolio.db"
-Invoke-Expression $migrationCommand
+python -m heroku.scripts.migrate_db --sqlite database/portfolio.db
+$migrationExit = $LASTEXITCODE
 
-if ($LASTEXITCODE -eq 0) {
+if ($migrationExit -eq 0) {
     Write-Host "`nMigration completed successfully!" -ForegroundColor Green
 } else {
-    Write-Host "`nMigration failed." -ForegroundColor Red
+    Write-Host "`nMigration failed (exit $migrationExit). Hosted database left unchanged." -ForegroundColor Red
 }
+
+# Propagate the exit code so add_transactions.ps1 can tell success from failure.
+exit $migrationExit

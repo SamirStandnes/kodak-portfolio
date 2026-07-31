@@ -56,9 +56,15 @@ def update_prices():
     instruments = cursor.fetchall()
 
     if not instruments:
-        logger.info("No instruments to update")
+        # An empty result means the hosted database has no transactions, i.e. a
+        # migration wiped it and never reloaded. Fail loudly - this used to log
+        # one line and exit 0, so the nightly cron stayed green for days while
+        # writing nothing.
         conn.close()
-        return
+        raise RuntimeError(
+            "No instruments to price: the hosted database has no transactions. "
+            "Re-run workflows/deploy_data.ps1 to reload it from local SQLite."
+        )
 
     # Build mapping
     symbols = [row[1] for row in instruments]

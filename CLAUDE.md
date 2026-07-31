@@ -113,7 +113,7 @@ Detection is automatic via the `DATABASE_URL` environment variable.
 - **`heroku/db_adapter.py`** — PostgreSQL connection adapter (same API as `kodak/shared/db.py`)
 - **`heroku/config_adapter.py`** — Config from env vars (replaces `config.yaml`)
 - **`heroku/sql_compat.py`** — SQL translation layer (301 lines)
-- **`heroku/scripts/migrate_db.py`** — One-way SQLite → PostgreSQL migration (**drops & recreates** the 5 Kodak tables, then reloads from SQLite)
+- **`heroku/scripts/migrate_db.py`** — One-way SQLite → PostgreSQL migration (**drops & recreates** the 5 Kodak tables, then reloads from SQLite). Runs as **one transaction** with batched inserts: ~7 seconds, and the dashboard keeps serving the old data until the commit lands. Any row error rolls the whole thing back and exits non-zero — the hosted database is never left half-loaded
 - **`heroku/scripts/update_prices.py`** — Daily price/FX updater; run by the GitHub Actions cron
 - **`.github/workflows/update-prices.yml`** — the cron that runs `update_prices.py` against Neon
 
@@ -135,7 +135,12 @@ BASE_CURRENCY = "NOK"
 .\workflows\deploy_data.ps1   # migrates local SQLite -> Neon (reads DATABASE_URL from .env)
 ```
 Because `migrate_db.py` drops & recreates, this overwrites prices the cron added;
-the next cron run repopulates them (cosmetic gap only).
+the next cron run repopulates them (cosmetic gap only). The script propagates the
+migration's exit code, so `add_transactions.ps1` step 8 reports real failures.
+
+If the hosted database ever ends up without transactions, the nightly Actions job
+fails loudly (`update_prices.py` raises instead of logging "No instruments to
+update" and exiting 0). Fix is always: re-run `deploy_data.ps1`.
 
 ### Entry Point
 
