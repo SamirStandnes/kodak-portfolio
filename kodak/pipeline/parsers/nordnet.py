@@ -49,7 +49,8 @@ def parse(file_path: str) -> List[Dict[str, Any]]:
         else:
             mapping = {
                 'KJØPT': 'BUY', 'SALG': 'SELL', 'UTBYTTE': 'DIVIDEND',
-                'INNSKUDD': 'DEPOSIT', 'UTTAK': 'WITHDRAWAL', 'UTTAK INTERNET': 'WITHDRAWAL',
+                'INNSKUDD': 'DEPOSIT', 'UTTAK': 'WITHDRAWAL',
+                'UTTAK INTERNT': 'WITHDRAWAL', 'UTTAK INTERNET': 'WITHDRAWAL',
                 'DEBETRENTE': 'INTEREST', 'INNLØSN. UTTAK VP': 'SELL', 
                 'AVG KORR': 'ADJUSTMENT', 'ERSTATNING': 'DEPOSIT',
                 'SALG VALUTA': 'CURRENCY_EXCHANGE', 'KJØP VALUTA': 'CURRENCY_EXCHANGE', 

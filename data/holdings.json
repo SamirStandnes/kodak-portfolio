@@ -10,7 +10,7 @@
       "quantity": 640.0,
       "cost_basis": 149071.0,
       "market_value": 352709.0,
-      "weight_pct": 11.5,
+      "weight_pct": 11.4,
       "return_pct": 136.6
     },
     {
@@ -21,9 +21,9 @@
       "asset_class": "Equity",
       "quantity": 70.0,
       "cost_basis": 163523.0,
-      "market_value": 330766.0,
+      "market_value": 331072.0,
       "weight_pct": 10.7,
-      "return_pct": 102.3
+      "return_pct": 102.5
     },
     {
       "symbol": "BRK-B",
@@ -74,6 +74,18 @@
       "return_pct": 46.8
     },
     {
+      "symbol": "ADBE",
+      "sector": "Technology",
+      "region": "Americas",
+      "country": "United States",
+      "asset_class": "Equity",
+      "quantity": 85.0,
+      "cost_basis": 171658.0,
+      "market_value": 202695.0,
+      "weight_pct": 6.5,
+      "return_pct": 18.1
+    },
+    {
       "symbol": "GOOGL",
       "sector": "Communication Services",
       "region": "Americas",
@@ -82,20 +94,8 @@
       "quantity": 60.0,
       "cost_basis": 68096.0,
       "market_value": 192576.0,
-      "weight_pct": 6.3,
-      "return_pct": 182.8
-    },
-    {
-      "symbol": "ADBE",
-      "sector": "Technology",
-      "region": "Americas",
-      "country": "United States",
-      "asset_class": "Equity",
-      "quantity": 80.0,
-      "cost_basis": 157565.0,
-      "market_value": 190772.0,
       "weight_pct": 6.2,
-      "return_pct": 21.1
+      "return_pct": 182.8
     },
     {
       "symbol": "AFG.OL",
@@ -106,7 +106,7 @@
       "quantity": 1000.0,
       "cost_basis": 179133.0,
       "market_value": 189800.0,
-      "weight_pct": 6.2,
+      "weight_pct": 6.1,
       "return_pct": 6.0
     },
     {
@@ -118,7 +118,7 @@
       "quantity": 615.0,
       "cost_basis": 169008.0,
       "market_value": 181070.0,
-      "weight_pct": 5.9,
+      "weight_pct": 5.8,
       "return_pct": 7.1
     },
     {
@@ -129,9 +129,9 @@
       "asset_class": "ETF",
       "quantity": 500.0,
       "cost_basis": 136437.0,
-      "market_value": 141105.0,
-      "weight_pct": 4.6,
-      "return_pct": 3.4
+      "market_value": 140859.0,
+      "weight_pct": 4.5,
+      "return_pct": 3.2
     },
     {
       "symbol": "SAP.DE",
@@ -141,9 +141,9 @@
       "asset_class": "Equity",
       "quantity": 70.0,
       "cost_basis": 110200.0,
-      "market_value": 119303.0,
-      "weight_pct": 3.9,
-      "return_pct": 8.3
+      "market_value": 119272.0,
+      "weight_pct": 3.8,
+      "return_pct": 8.2
     },
     {
       "symbol": "EMXC.L",
@@ -153,9 +153,9 @@
       "asset_class": "ETF",
       "quantity": 150.0,
       "cost_basis": 39981.0,
-      "market_value": 73918.0,
+      "market_value": 73819.0,
       "weight_pct": 2.4,
-      "return_pct": 84.9
+      "return_pct": 84.6
     },
     {
       "symbol": "STRF",
@@ -177,7 +177,7 @@
       "asset_class": "ETF",
       "quantity": 411.0,
       "cost_basis": 35405.0,
-      "market_value": 53562.0,
+      "market_value": 53571.0,
       "weight_pct": 1.7,
       "return_pct": 51.3
     },
@@ -218,6 +218,18 @@
       "return_pct": 2.9
     },
     {
+      "symbol": "SPCX",
+      "sector": "Industrials",
+      "region": "Americas",
+      "country": "United States",
+      "asset_class": "Equity",
+      "quantity": 11.0,
+      "cost_basis": 12080.0,
+      "market_value": 11872.0,
+      "weight_pct": 0.4,
+      "return_pct": -1.7
+    },
+    {
       "symbol": "DGTL.MI",
       "sector": "Technology",
       "region": "Global",
@@ -242,18 +254,6 @@
       "return_pct": -39.7
     },
     {
-      "symbol": "SPCX",
-      "sector": "Industrials",
-      "region": "Americas",
-      "country": "United States",
-      "asset_class": "Equity",
-      "quantity": 1.0,
-      "cost_basis": 1283.0,
-      "market_value": 1079.0,
-      "weight_pct": 0.0,
-      "return_pct": -15.9
-    },
-    {
       "symbol": "DSRT.OL",
       "sector": "Basic Materials",
       "region": "Nordics",
@@ -261,13 +261,25 @@
       "asset_class": "Equity",
       "quantity": 1000.0,
       "cost_basis": 20808.0,
-      "market_value": 327.0,
+      "market_value": 326.0,
       "weight_pct": 0.0,
       "return_pct": -98.4
+    },
+    {
+      "symbol": "NO0013758177",
+      "sector": null,
+      "region": null,
+      "country": null,
+      "asset_class": null,
+      "quantity": 2116.0,
+      "cost_basis": 0.0,
+      "market_value": 0.0,
+      "weight_pct": 0.0,
+      "return_pct": 0
     }
   ],
-  "total_market_value": 3080199.0,
-  "total_cost_basis": 2182748.0,
-  "cash_balance": -194468.0,
-  "net_worth": 2885730.0
+  "total_market_value": 3102854.0,
+  "total_cost_basis": 2207637.0,
+  "cash_balance": -205320.0,
+  "net_worth": 2897534.0
 }
