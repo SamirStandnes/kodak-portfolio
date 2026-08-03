@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-08-02",
+  "last_updated": "2026-08-03",
   "holdings": [
     {
       "symbol": "D05.SI",
@@ -9,9 +9,9 @@
       "asset_class": "Equity",
       "quantity": 640.0,
       "cost_basis": 149071.0,
-      "market_value": 349720.0,
+      "market_value": 350051.0,
       "weight_pct": 11.2,
-      "return_pct": 134.6
+      "return_pct": 134.8
     },
     {
       "symbol": "ALV.DE",
@@ -57,9 +57,9 @@
       "asset_class": "Equity",
       "quantity": 3500.0,
       "cost_basis": 217142.0,
-      "market_value": 246843.0,
+      "market_value": 246001.0,
       "weight_pct": 7.9,
-      "return_pct": 13.7
+      "return_pct": 13.3
     },
     {
       "symbol": "MSFT",
@@ -106,7 +106,7 @@
       "quantity": 1000.0,
       "cost_basis": 179133.0,
       "market_value": 189400.0,
-      "weight_pct": 6.0,
+      "weight_pct": 6.1,
       "return_pct": 5.7
     },
     {
@@ -249,9 +249,9 @@
       "asset_class": "Equity",
       "quantity": 500.0,
       "cost_basis": 11915.0,
-      "market_value": 7362.0,
+      "market_value": 7002.0,
       "weight_pct": 0.2,
-      "return_pct": -38.2
+      "return_pct": -41.2
     },
     {
       "symbol": "DSRT.OL",
@@ -278,8 +278,8 @@
       "return_pct": 0
     }
   ],
-  "total_market_value": 3130735.0,
+  "total_market_value": 3129863.0,
   "total_cost_basis": 2207637.0,
   "cash_balance": -205320.0,
-  "net_worth": 2925415.0
+  "net_worth": 2924543.0
 }
