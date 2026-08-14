@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-08-13",
+  "last_updated": "2026-08-14",
   "holdings": [
     {
       "symbol": "D05.SI",
@@ -9,9 +9,9 @@
       "asset_class": "Equity",
       "quantity": 640.0,
       "cost_basis": 149071.0,
-      "market_value": 363729.0,
-      "weight_pct": 11.6,
-      "return_pct": 144.0
+      "market_value": 358684.0,
+      "weight_pct": 11.5,
+      "return_pct": 140.6
     },
     {
       "symbol": "ALV.DE",
@@ -21,9 +21,9 @@
       "asset_class": "Equity",
       "quantity": 70.0,
       "cost_basis": 163523.0,
-      "market_value": 335148.0,
-      "weight_pct": 10.7,
-      "return_pct": 105.0
+      "market_value": 337610.0,
+      "weight_pct": 10.8,
+      "return_pct": 106.5
     },
     {
       "symbol": "AMZN",
@@ -33,9 +33,9 @@
       "asset_class": "Equity",
       "quantity": 124.0,
       "cost_basis": 169044.0,
-      "market_value": 314511.0,
-      "weight_pct": 10.1,
-      "return_pct": 86.1
+      "market_value": 311981.0,
+      "weight_pct": 10.0,
+      "return_pct": 84.6
     },
     {
       "symbol": "BRK-B",
@@ -45,9 +45,9 @@
       "asset_class": "Equity",
       "quantity": 63.0,
       "cost_basis": 212221.0,
-      "market_value": 304901.0,
+      "market_value": 303065.0,
       "weight_pct": 9.7,
-      "return_pct": 43.7
+      "return_pct": 42.8
     },
     {
       "symbol": "MSFT",
@@ -57,9 +57,9 @@
       "asset_class": "Equity",
       "quantity": 60.0,
       "cost_basis": 186134.0,
-      "market_value": 280378.0,
+      "market_value": 282912.0,
       "weight_pct": 9.0,
-      "return_pct": 50.6
+      "return_pct": 52.0
     },
     {
       "symbol": "2318.HK",
@@ -69,9 +69,9 @@
       "asset_class": "Equity",
       "quantity": 3500.0,
       "cost_basis": 217142.0,
-      "market_value": 234287.0,
-      "weight_pct": 7.5,
-      "return_pct": 7.9
+      "market_value": 231118.0,
+      "weight_pct": 7.4,
+      "return_pct": 6.4
     },
     {
       "symbol": "ADBE",
@@ -81,9 +81,9 @@
       "asset_class": "Equity",
       "quantity": 85.0,
       "cost_basis": 171658.0,
-      "market_value": 208712.0,
-      "weight_pct": 6.7,
-      "return_pct": 21.6
+      "market_value": 218182.0,
+      "weight_pct": 7.0,
+      "return_pct": 27.1
     },
     {
       "symbol": "GOOGL",
@@ -93,9 +93,9 @@
       "asset_class": "Equity",
       "quantity": 60.0,
       "cost_basis": 68096.0,
-      "market_value": 195603.0,
+      "market_value": 197209.0,
       "weight_pct": 6.3,
-      "return_pct": 187.2
+      "return_pct": 189.6
     },
     {
       "symbol": "AFG.OL",
@@ -105,9 +105,9 @@
       "asset_class": "Equity",
       "quantity": 1000.0,
       "cost_basis": 179133.0,
-      "market_value": 187800.0,
+      "market_value": 186600.0,
       "weight_pct": 6.0,
-      "return_pct": 4.8
+      "return_pct": 4.2
     },
     {
       "symbol": "AENA.MC",
@@ -117,9 +117,9 @@
       "asset_class": "Equity",
       "quantity": 615.0,
       "cost_basis": 169008.0,
-      "market_value": 180307.0,
-      "weight_pct": 5.8,
-      "return_pct": 6.7
+      "market_value": 179496.0,
+      "weight_pct": 5.7,
+      "return_pct": 6.2
     },
     {
       "symbol": "LYMD.DE",
@@ -129,9 +129,9 @@
       "asset_class": "ETF",
       "quantity": 500.0,
       "cost_basis": 136437.0,
-      "market_value": 142140.0,
+      "market_value": 141261.0,
       "weight_pct": 4.5,
-      "return_pct": 4.2
+      "return_pct": 3.5
     },
     {
       "symbol": "SAP.DE",
@@ -141,9 +141,9 @@
       "asset_class": "Equity",
       "quantity": 70.0,
       "cost_basis": 110200.0,
-      "market_value": 138998.0,
-      "weight_pct": 4.4,
-      "return_pct": 26.1
+      "market_value": 135351.0,
+      "weight_pct": 4.3,
+      "return_pct": 22.8
     },
     {
       "symbol": "EMXC.L",
@@ -153,9 +153,9 @@
       "asset_class": "ETF",
       "quantity": 150.0,
       "cost_basis": 39981.0,
-      "market_value": 75283.0,
-      "weight_pct": 2.4,
-      "return_pct": 88.3
+      "market_value": 76783.0,
+      "weight_pct": 2.5,
+      "return_pct": 92.0
     },
     {
       "symbol": "LOCK.L",
@@ -165,9 +165,9 @@
       "asset_class": "ETF",
       "quantity": 411.0,
       "cost_basis": 35405.0,
-      "market_value": 58027.0,
+      "market_value": 58153.0,
       "weight_pct": 1.9,
-      "return_pct": 63.9
+      "return_pct": 64.3
     },
     {
       "symbol": "XAIN.DE",
@@ -177,9 +177,9 @@
       "asset_class": "ETF",
       "quantity": 500.0,
       "cost_basis": 54842.0,
-      "market_value": 42505.0,
+      "market_value": 42703.0,
       "weight_pct": 1.4,
-      "return_pct": -22.5
+      "return_pct": -22.1
     },
     {
       "symbol": "XCS3.DE",
@@ -189,7 +189,7 @@
       "asset_class": "ETF",
       "quantity": 180.0,
       "cost_basis": 25042.0,
-      "market_value": 25255.0,
+      "market_value": 25239.0,
       "weight_pct": 0.8,
       "return_pct": 0.8
     },
@@ -201,9 +201,9 @@
       "asset_class": "ETF",
       "quantity": 1650.0,
       "cost_basis": 23920.0,
-      "market_value": 25051.0,
+      "market_value": 25000.0,
       "weight_pct": 0.8,
-      "return_pct": 4.7
+      "return_pct": 4.5
     },
     {
       "symbol": "SPCX",
@@ -213,9 +213,9 @@
       "asset_class": "Equity",
       "quantity": 11.0,
       "cost_basis": 12080.0,
-      "market_value": 15256.0,
+      "market_value": 14749.0,
       "weight_pct": 0.5,
-      "return_pct": 26.3
+      "return_pct": 22.1
     },
     {
       "symbol": "DSRT.OL",
@@ -242,8 +242,8 @@
       "return_pct": 0
     }
   ],
-  "total_market_value": 3128239.0,
+  "total_market_value": 3126445.0,
   "total_cost_basis": 2143745.0,
   "cash_balance": -150170.0,
-  "net_worth": 2978070.0
+  "net_worth": 2976275.0
 }
