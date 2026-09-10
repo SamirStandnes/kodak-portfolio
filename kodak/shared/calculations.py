@@ -767,7 +767,7 @@ def get_interest_details():
         df_yearly = query_df("""
             SELECT
                 strftime('%Y', date) as year,
-                SUM(ABS(amount_local)) as total
+                -SUM(amount_local) as total
             FROM transactions
             WHERE type = 'INTEREST'
             GROUP BY year
@@ -778,7 +778,7 @@ def get_interest_details():
         df_currency = query_df("""
             SELECT
                 currency,
-                SUM(ABS(amount_local)) as total
+                -SUM(amount_local) as total
             FROM transactions
             WHERE type = 'INTEREST'
             GROUP BY currency
@@ -1259,3 +1259,284 @@ def get_realized_performance():
         return pd.DataFrame()
         
     return pd.DataFrame(data).sort_values('year')
+
+
+# ---------------------------------------------------------------------------
+# Current valuation & history (shared by the dashboard pages)
+# ---------------------------------------------------------------------------
+
+# Transaction types that move share quantity. get_holdings() adds `quantity`
+# as-is for every one of these (sells/withdrawals are stored negative).
+POSITION_TYPES = set(INFLOW_TYPES) | set(OUTFLOW_TYPES)
+MIN_HOLDING_QTY = 0.001  # same dust threshold get_holdings() uses
+
+_PRICE_SNAPSHOT_SQL = """
+    WITH ranked AS (
+        SELECT instrument_id, date, close,
+               ROW_NUMBER() OVER (PARTITION BY instrument_id ORDER BY date DESC) AS rn
+        FROM market_prices
+    )
+    SELECT latest.instrument_id,
+           latest.close AS price,
+           latest.date  AS price_date,
+           prev.close   AS prev_close,
+           prev.date    AS prev_date
+    FROM ranked AS latest
+    LEFT JOIN ranked AS prev
+      ON latest.instrument_id = prev.instrument_id AND prev.rn = 2
+    WHERE latest.rn = 1
+"""
+
+VALUED_HOLDINGS_COLUMNS = [
+    'instrument_id', 'symbol', 'name', 'currency', 'quantity', 'cost_basis_local',
+    'price', 'price_date', 'prev_close', 'prev_date', 'fx_rate', 'has_price',
+    'market_value_local', 'gain_local', 'return_pct',
+    'day_change_pct', 'day_change_local', 'weight_pct',
+    'sector', 'region', 'country', 'asset_class',
+]
+
+
+def get_valued_holdings() -> pd.DataFrame:
+    """Current holdings valued in base currency using the latest stored prices.
+
+    One source of truth for every dashboard page that shows "what is the
+    portfolio worth right now", so Overview / Holdings / Risk can never
+    disagree on totals or position counts.
+
+    Holdings with no stored price (illiquid, unmapped, or prices not yet
+    populated) are carried at cost basis and flagged ``has_price=False``, so
+    they still count toward totals and allocation.
+
+    ``day_change_*`` compares the latest stored close with the previous stored
+    close. Those two dates are whatever the last two price refreshes were, not
+    necessarily consecutive trading days, so callers should label the change
+    with ``prev_date`` -> ``price_date`` rather than "today".
+    """
+    holdings = get_holdings()
+    if holdings.empty:
+        return pd.DataFrame(columns=VALUED_HOLDINGS_COLUMNS)
+
+    with get_db_connection() as conn:
+        instruments = query_df(
+            "SELECT id, symbol, isin, name, currency, sector, region, country, asset_class "
+            "FROM instruments", conn)
+        prices = query_df(_PRICE_SNAPSHOT_SQL, conn)
+
+    meta = instruments.set_index('id').to_dict('index')
+    price_map = prices.set_index('instrument_id').to_dict('index') if not prices.empty else {}
+
+    fx_cache: Dict[str, float] = {BASE_CURRENCY: 1.0}
+
+    def fx_for(currency: str) -> float:
+        if currency not in fx_cache:
+            fx_cache[currency] = get_exchange_rate(currency, BASE_CURRENCY)
+        return fx_cache[currency]
+
+    rows = []
+    for _, h in holdings.iterrows():
+        inst_id = h['instrument_id']
+        m = meta.get(inst_id, {})
+        p = price_map.get(inst_id)
+        currency = m.get('currency') or BASE_CURRENCY
+        quantity = float(h['quantity'])
+        cost_basis = float(h['cost_basis_local'])
+
+        price = prev_close = day_pct = None
+        price_date = prev_date = None
+        fx_rate = 1.0
+        has_price = False
+
+        if p and p.get('price') is not None and p['price'] > 0:
+            has_price = True
+            price = float(p['price'])
+            price_date = p.get('price_date')
+            fx_rate = fx_for(currency)
+            market_value = quantity * price * fx_rate
+            prev = p.get('prev_close')
+            if prev is not None and not pd.isna(prev) and prev > 0:
+                prev_close = float(prev)
+                prev_date = p.get('prev_date')
+                day_pct = (price / prev_close - 1) * 100
+        else:
+            market_value = cost_basis
+
+        day_change_local = (
+            quantity * (price - prev_close) * fx_rate if day_pct is not None else 0.0
+        )
+
+        rows.append({
+            'instrument_id': inst_id,
+            'symbol': h['symbol'] or h['isin'],
+            'name': m.get('name'),
+            'currency': currency,
+            'quantity': quantity,
+            'cost_basis_local': cost_basis,
+            'price': price,
+            'price_date': price_date,
+            'prev_close': prev_close,
+            'prev_date': prev_date,
+            'fx_rate': fx_rate,
+            'has_price': has_price,
+            'market_value_local': market_value,
+            'gain_local': market_value - cost_basis,
+            'return_pct': (market_value / cost_basis - 1) * 100 if cost_basis > 0 else 0.0,
+            'day_change_pct': day_pct,
+            'day_change_local': day_change_local,
+            'sector': m.get('sector') or 'Unknown',
+            'region': m.get('region') or 'Unknown',
+            'country': m.get('country') or 'Unknown',
+            'asset_class': m.get('asset_class') or 'Unknown',
+        })
+
+    df = pd.DataFrame(rows)
+    total = df['market_value_local'].sum()
+    df['weight_pct'] = (df['market_value_local'] / total * 100) if total else 0.0
+    df = df.sort_values('market_value_local', ascending=False).reset_index(drop=True)
+    return df[VALUED_HOLDINGS_COLUMNS]
+
+
+PORTFOLIO_HISTORY_COLUMNS = ['date', 'holdings_value', 'cash', 'total_value', 'net_deposits']
+
+
+def get_portfolio_value_history() -> pd.DataFrame:
+    """Portfolio value in base currency on every date that has stored prices.
+
+    Built entirely from the database (no network): stored closes, stored FX
+    rates, and the transaction ledger replayed for quantity and cash.
+
+    Per date:
+      holdings_value = sum(qty x close x fx) for priced instruments, plus net
+                       cash invested for instruments that have never had a
+                       stored price (carried at cost, like get_valued_holdings)
+      cash           = running sum of amount_local over all transactions
+      total_value    = holdings_value + cash
+      net_deposits   = running sum of external flows (what you put in)
+
+    Prices and FX rates are forward-filled between refreshes. Instruments
+    that were only priced from some later date are back-filled from their
+    first stored close so the early part of the curve does not dip to zero.
+    """
+    empty = pd.DataFrame(columns=PORTFOLIO_HISTORY_COLUMNS)
+    with get_db_connection() as conn:
+        prices = query_df("SELECT instrument_id, date, close FROM market_prices", conn)
+        if prices.empty:
+            return empty
+        fx = query_df(
+            "SELECT from_currency, date, rate FROM exchange_rates WHERE to_currency = ?",
+            conn, params=(BASE_CURRENCY,))
+        txns = query_df(
+            "SELECT date, type, instrument_id, quantity, amount_local FROM transactions",
+            conn)
+        instruments = query_df("SELECT id, currency FROM instruments", conn)
+
+    if txns.empty:
+        return empty
+
+    def to_day(series: pd.Series) -> pd.Series:
+        return pd.to_datetime(series.astype(str).str[:10], format='%Y-%m-%d')
+
+    prices['date'] = to_day(prices['date'])
+    txns['date'] = to_day(txns['date'])
+    prices = prices[prices['close'].notna() & (prices['close'] > 0)]
+    if prices.empty:
+        return empty
+
+    dates = pd.DatetimeIndex(sorted(prices['date'].unique()))
+
+    # --- Quantity held per instrument on each price date ---
+    pos = txns[txns['type'].isin(POSITION_TYPES) & txns['instrument_id'].notna()].copy()
+    pos['instrument_id'] = pos['instrument_id'].astype(int)
+    pos['quantity'] = pos['quantity'].fillna(0.0)
+    pos['amount_local'] = pos['amount_local'].fillna(0.0)
+
+    def running(frame: pd.DataFrame, value: str) -> pd.DataFrame:
+        if frame.empty:
+            return pd.DataFrame(index=dates)
+        cum = (frame.pivot_table(index='date', columns='instrument_id', values=value,
+                                 aggfunc='sum', fill_value=0.0)
+                    .sort_index().cumsum())
+        return cum.reindex(cum.index.union(dates)).ffill().reindex(dates).fillna(0.0)
+
+    qty = running(pos, 'quantity')
+    qty = qty.where(qty.abs() > MIN_HOLDING_QTY, 0.0)
+    net_invested = (-running(pos, 'amount_local')).clip(lower=0.0)
+
+    # --- Price matrix (ffill between refreshes, bfill before first close) ---
+    px = (prices.pivot_table(index='date', columns='instrument_id', values='close', aggfunc='last')
+                .reindex(dates).ffill().bfill())
+
+    # --- FX matrix ---
+    currency_of = dict(zip(instruments['id'], instruments['currency']))
+    needed = {currency_of.get(i) or BASE_CURRENCY for i in qty.columns}
+    fxm = pd.DataFrame(index=dates)
+    if not fx.empty:
+        fx['date'] = to_day(fx['date'])
+        fxm = (fx.pivot_table(index='date', columns='from_currency', values='rate', aggfunc='last')
+                 .sort_index())
+        fxm = fxm.reindex(fxm.index.union(dates)).ffill().bfill().reindex(dates)
+    fxm[BASE_CURRENCY] = 1.0
+    for c in needed:
+        if c not in fxm.columns or fxm[c].isna().all():
+            fxm[c] = get_exchange_rate(c, BASE_CURRENCY)
+    fxm = fxm.ffill().bfill()
+
+    # --- Value per instrument ---
+    holdings_value = pd.Series(0.0, index=dates)
+    for inst_id in qty.columns:
+        q = qty[inst_id]
+        if inst_id in px.columns:
+            rate = fxm[currency_of.get(inst_id) or BASE_CURRENCY]
+            holdings_value += q * px[inst_id] * rate
+        else:
+            holdings_value += net_invested[inst_id].where(q != 0, 0.0)
+
+    # --- Cash and external flows ---
+    def running_total(frame: pd.DataFrame) -> pd.Series:
+        if frame.empty:
+            return pd.Series(0.0, index=dates)
+        s = frame.groupby('date')['amount_local'].sum().sort_index().cumsum()
+        return s.reindex(s.index.union(dates)).ffill().reindex(dates).fillna(0.0)
+
+    txns['amount_local'] = txns['amount_local'].fillna(0.0)
+    cash = running_total(txns)
+    net_deposits = running_total(txns[txns['type'].isin(EXTERNAL_FLOW_TYPES)])
+
+    out = pd.DataFrame({
+        'date': dates,
+        'holdings_value': holdings_value.values,
+        'cash': cash.values,
+        'net_deposits': net_deposits.values,
+    })
+    out['total_value'] = out['holdings_value'] + out['cash']
+    return out[PORTFOLIO_HISTORY_COLUMNS]
+
+
+def get_price_history(instrument_id: int) -> pd.DataFrame:
+    """Stored close prices for one instrument, oldest first (date, close)."""
+    with get_db_connection() as conn:
+        df = query_df(
+            "SELECT date, close FROM market_prices WHERE instrument_id = ? ORDER BY date",
+            conn, params=(int(instrument_id),))
+    if df.empty:
+        return pd.DataFrame(columns=['date', 'close'])
+    df['date'] = pd.to_datetime(df['date'].astype(str).str[:10], format='%Y-%m-%d')
+    return df
+
+
+def get_monthly_dividends(months: int = 24) -> pd.DataFrame:
+    """Dividends per calendar month for the trailing ``months`` months.
+
+    Grouping is done in pandas (not SQL) so it runs identically on SQLite
+    and Postgres. Returns columns: month (Timestamp, first of month), total.
+    Months with no dividends are present with total 0.
+    """
+    with get_db_connection() as conn:
+        df = query_df(
+            "SELECT date, amount_local FROM transactions WHERE type = 'DIVIDEND'", conn)
+    end = pd.Timestamp.today().to_period('M')
+    idx = pd.period_range(end - (months - 1), end, freq='M')
+    if df.empty:
+        return pd.DataFrame({'month': idx.to_timestamp(), 'total': 0.0})
+    df['month'] = pd.to_datetime(df['date'].astype(str).str[:10]).dt.to_period('M')
+    totals = df.groupby('month')['amount_local'].sum().reindex(idx, fill_value=0.0)
+    return pd.DataFrame({'month': idx.to_timestamp(), 'total': totals.values})

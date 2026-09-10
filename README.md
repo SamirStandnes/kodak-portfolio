@@ -25,20 +25,23 @@ This setting affects:
 *   **Deep Performance Analysis:** Tracks Realized/Unrealized Gains, Dividend yields, Interest expenses, and FX P&L.
 *   **Staging Workflow:** Review and verify transactions before they hit your master database.
 *   **Modern Dashboard:** Interactive UI built with Streamlit and Plotly.
-*   **Cloud Ready:** Deploy to Heroku for mobile/web access with PostgreSQL backend.
+*   **Cloud Ready:** Runs on Streamlit Community Cloud with a Neon Postgres backend for mobile/web access.
 
 ---
 
 ## ☁️ Cloud Deployment (Optional)
 
-Want to access your portfolio from your phone? Deploy the dashboard to Heroku:
+Want to access your portfolio from your phone? The dashboard runs for free on
+**Streamlit Community Cloud**, backed by a free **Neon Postgres** database:
 
-1. Create a Heroku app with PostgreSQL addon
-2. Set `DASHBOARD_PASSWORD` environment variable
-3. Connect your GitHub repo for auto-deploy
-4. Migrate your local data: `python -m heroku.scripts.migrate_db`
+1. Create a Neon project and copy its connection string
+2. Deploy this repo on Streamlit Cloud (entry point `kodak/dashboard/Home.py`)
+3. Add `DATABASE_URL`, `DASHBOARD_PASSWORD` and `BASE_CURRENCY` under the app's Secrets
+4. Push your local data: `.\workflows\deploy_data.ps1`
 
-**See:** [Heroku Deployment Guide](heroku/README.md) for full instructions.
+Daily price updates run from GitHub Actions (`.github/workflows/update-prices.yml`).
+The `heroku/` directory holds the Postgres adapter layer (the name is a legacy of the
+original Heroku deployment). **See:** the *Cloud Deployment* section of `CLAUDE.md`.
 
 ---
 
@@ -76,7 +79,7 @@ python -m kodak.setup.initialize_database
 │   ├── dashboard/             <-- Streamlit UI (local)
 │   ├── setup/                 <-- Database initialization
 │   └── maintenance/           <-- Helper scripts
-├── heroku/                    <-- Cloud deployment (Heroku/PostgreSQL)
+├── heroku/                    <-- Cloud adapters (PostgreSQL / Streamlit Cloud)
 │   └── scripts/               <-- Migration & price update scripts
 ├── data/
 │   ├── new_raw_transactions/  <-- Place broker exports here
@@ -105,8 +108,8 @@ To see how your portfolio is doing today without adding new data:
 .\workflows\refresh_market_data.ps1
 ```
 
-### Deploying Data to Cloud (Heroku)
-To sync your latest local transactions and prices to the Heroku dashboard:
+### Deploying Data to Cloud
+To sync your latest local transactions and prices to the hosted dashboard:
 ```powershell
 .\workflows\deploy_data.ps1
 ```

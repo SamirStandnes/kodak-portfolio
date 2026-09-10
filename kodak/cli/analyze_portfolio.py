@@ -2,7 +2,7 @@ import argparse
 import json
 from datetime import date
 import pandas as pd
-from kodak.shared.db import get_connection, execute_query
+from kodak.shared.db import get_db_connection, execute_query, query_df
 from kodak.shared.market_data import get_latest_prices, get_exchange_rate
 from kodak.shared.calculations import get_holdings, get_income_and_costs
 from kodak.shared.utils import load_config
@@ -61,8 +61,8 @@ def get_portfolio_data():
             price_raw = market_data['price']
             curr = market_data['currency']
 
-        if curr == BASE_CURRENCY:
-            price_nok = price_raw
+        if curr in (BASE_CURRENCY, 'UNK'):
+            price_nok = price_raw  # no price -> 0, no FX lookup for a placeholder currency
         else:
             if curr not in fx_cache:
                 fx_cache[curr] = get_exchange_rate(curr, BASE_CURRENCY)
@@ -96,9 +96,10 @@ def get_portfolio_data():
         item['weight_pct'] = (item['market_value'] / total_market_value * 100) if total_market_value > 0 else 0
 
     # Calculate cash balance
-    cash_balance_nok = pd.read_sql(
-        "SELECT COALESCE(SUM(amount_local), 0) as total FROM transactions", get_connection()
-    ).iloc[0]['total']
+    with get_db_connection() as conn:
+        cash_balance_nok = query_df(
+            "SELECT COALESCE(SUM(amount_local), 0) as total FROM transactions", conn
+        ).iloc[0]['total']
 
     summary = {
         'total_market_value': total_market_value,

@@ -8,7 +8,7 @@ import streamlit as st
 import plotly.express as px
 from kodak.dashboard.common import (
     BASE_CURRENCY, CACHE_TTL, COLORS, page_setup, format_local,
-    display_table, number_col, text_col, date_col, apply_plotly_theme,
+    display_table, number_col, text_col, date_col, render_chart,
 )
 from kodak.shared.calculations import get_fee_details, get_fee_analysis, get_platform_fees
 
@@ -47,12 +47,11 @@ with tab1:
                 name=BASE_CURRENCY,
                 hovertemplate=f"<b>%{{x}}</b><br>%{{y:,.0f}} {BASE_CURRENCY}<extra></extra>",
             )
-            apply_plotly_theme(fig)
             fig.update_layout(
                 showlegend=False, hovermode='closest',
-                xaxis_title='', yaxis_title=BASE_CURRENCY,
+                xaxis_title='', yaxis_title=BASE_CURRENCY, xaxis=dict(type='category'),
             )
-            st.plotly_chart(fig, use_container_width=True, theme=None)
+            render_chart(fig)
     with tcol2:
         st.caption("By Currency")
         display_table(df_currency, {

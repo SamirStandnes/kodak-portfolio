@@ -11,7 +11,8 @@ def get_latest_prices(instrument_ids: List[int]) -> Dict[int, Tuple[float, str]]
     """
     Fetches latest price. Returns {id: (price, currency)}.
     """
-    conn = get_connection()
+    if not instrument_ids:
+        return {}
     placeholders = ','.join(['?'] * len(instrument_ids))
     
     # Get Symbol AND Currency from Instruments

@@ -49,7 +49,9 @@ _IS_HEROKU = bool(os.environ.get("DATABASE_URL"))
 if _IS_HEROKU:
     import heroku.setup_adapters  # noqa: F401
 
+import hmac
 import streamlit as st
+import pandas as pd
 import plotly.graph_objects as go
 from kodak.shared.utils import load_config, format_local
 from kodak.shared.constants import CACHE_TTL, TABLE_HEIGHT, COLORS, PLOTLY_LAYOUT
@@ -57,6 +59,40 @@ from kodak.shared.constants import CACHE_TTL, TABLE_HEIGHT, COLORS, PLOTLY_LAYOU
 # Shared config — loaded once
 config = load_config()
 BASE_CURRENCY = config.get('base_currency', 'NOK')
+
+
+def format_pct(val, decimals: int = 1, sign: bool = False) -> str:
+    """Percent in the same Norwegian style as format_local (e.g. '12,3 %')."""
+    if val is None or pd.isna(val):
+        return "–"
+    prefix = "+" if sign and val > 0 else ""
+    return f"{prefix}{format_local(val, decimals)} %"
+
+
+# ---------------------------------------------------------------------------
+# Cached data loaders shared by several pages. Keeping them here (rather than
+# one copy per page) means Overview / Holdings / Risk all read the *same*
+# cached frame and can never disagree on totals or position counts.
+# ---------------------------------------------------------------------------
+@st.cache_data(ttl=CACHE_TTL, show_spinner="Valuing holdings...")
+def load_valued_holdings() -> pd.DataFrame:
+    from kodak.shared.calculations import get_valued_holdings
+    return get_valued_holdings()
+
+
+@st.cache_data(ttl=CACHE_TTL, show_spinner="Building portfolio history...")
+def load_portfolio_history() -> pd.DataFrame:
+    from kodak.shared.calculations import get_portfolio_value_history
+    return get_portfolio_value_history()
+
+
+def price_freshness(df_valued: pd.DataFrame) -> tuple[str | None, str | None]:
+    """(latest price date, previous price date) across the valued holdings."""
+    if df_valued.empty or df_valued['price_date'].dropna().empty:
+        return None, None
+    latest = df_valued['price_date'].dropna().max()
+    prev = df_valued['prev_date'].dropna()
+    return str(latest), (str(prev.max()) if not prev.empty else None)
 
 
 def check_auth():
@@ -95,10 +131,10 @@ def check_auth():
 
     with st.form("login_form"):
         pwd = st.text_input("Password", type="password", label_visibility="collapsed", placeholder="Password")
-        submitted = st.form_submit_button("Log in", use_container_width=True, type="primary")
+        submitted = st.form_submit_button("Log in", width="stretch", type="primary")
 
     if submitted:
-        if pwd == password:
+        if hmac.compare_digest(pwd or "", password):
             st.session_state["password_correct"] = True
             st.rerun()
         else:
@@ -170,7 +206,7 @@ def display_table_native(df, column_config: dict, height: int = TABLE_HEIGHT):
     st.dataframe(
         df,
         column_config=column_config,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         height=height,
     )
@@ -205,7 +241,7 @@ def display_aggrid(df, columns: dict | None = None, height: int = TABLE_HEIGHT, 
     """Render a DataFrame as an AG-Grid table with the dark Kodak theme.
 
     `columns` maps column-name → spec dict:
-        {"type": "currency"|"percent"|"number"|"text"|"progress",
+        {"type": "currency"|"percent"|"number"|"quantity"|"text"|"progress",
          "decimals": int,
          "color_signed": bool (green if >0, red if <0),
          "max": float (only for type="progress"),
@@ -233,15 +269,19 @@ def display_aggrid(df, columns: dict | None = None, height: int = TABLE_HEIGHT, 
         return JsCode(
             "function(params){"
             "  if (params.value === null || params.value === undefined || isNaN(params.value)) return '';"
-            f"  return Number(params.value).toFixed({decimals}) + '%';"
+            f"  return Number(params.value).toLocaleString('nb-NO', {{minimumFractionDigits:{decimals}, maximumFractionDigits:{decimals}}}) + ' %';"
             "}"
         )
 
-    def progress_value_formatter(decimals: int = 1) -> JsCode:
+    progress_value_formatter = pct_formatter
+
+    def qty_formatter(max_decimals: int) -> JsCode:
+        # Share counts: whole numbers stay whole, fractional fund units keep
+        # their decimals instead of being rounded away.
         return JsCode(
             "function(params){"
             "  if (params.value === null || params.value === undefined || isNaN(params.value)) return '';"
-            f"  return Number(params.value).toFixed({decimals}) + '%';"
+            f"  return Number(params.value).toLocaleString('nb-NO', {{minimumFractionDigits:0, maximumFractionDigits:{max_decimals}}});"
             "}"
         )
 
@@ -291,6 +331,10 @@ def display_aggrid(df, columns: dict | None = None, height: int = TABLE_HEIGHT, 
             kwargs["valueFormatter"] = num_formatter(decimals)
             kwargs["type"] = "rightAligned"
             kwargs["cellStyle"] = signed_color if color_signed else mono_style
+        elif ctype == "quantity":
+            kwargs["valueFormatter"] = qty_formatter(spec.get("decimals", 4))
+            kwargs["type"] = "rightAligned"
+            kwargs["cellStyle"] = mono_style
         elif ctype == "percent":
             kwargs["valueFormatter"] = pct_formatter(decimals)
             kwargs["type"] = "rightAligned"
@@ -347,6 +391,12 @@ def text_col(label: str) -> st.column_config.TextColumn:
 def date_col(label: str = "Date", fmt: str = "YYYY-MM-DD") -> st.column_config.DateColumn:
     """Shorthand for DateColumn."""
     return st.column_config.DateColumn(label, format=fmt)
+
+
+def render_chart(fig: go.Figure, **kwargs):
+    """Theme + render a Plotly figure full-width (Streamlit's own theme off)."""
+    apply_plotly_theme(fig)
+    st.plotly_chart(fig, width="stretch", theme=None, **kwargs)
 
 
 def apply_plotly_theme(fig: go.Figure) -> go.Figure:

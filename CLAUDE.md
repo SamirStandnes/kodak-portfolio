@@ -45,7 +45,12 @@ streamlit run kodak/dashboard/Home.py
 
 ### Key Modules
 
-- **`kodak/shared/calculations.py`** - Core math: XIRR, cost basis, holdings, split adjustments
+- **`kodak/shared/calculations.py`** - Core math: XIRR, cost basis, holdings, split adjustments.
+  `get_valued_holdings()` is the single source of truth for "what is the portfolio worth
+  now" (used by Overview / Holdings / Risk); `get_portfolio_value_history()` builds the
+  value-over-time curve from stored `market_prices` + `exchange_rates` (no network)
+- **`kodak/dashboard/common.py`** - Shared page helpers: cached loaders (`load_valued_holdings`,
+  `load_portfolio_history`), `render_chart`, `display_aggrid`, `format_pct`
 - **`kodak/shared/db.py`** - SQLite connection management with context managers
 - **`kodak/shared/parser_utils.py`** - Transaction validation, `create_empty_transaction()` template
 - **`kodak/shared/market_data.py`** - Yahoo Finance integration
@@ -145,9 +150,18 @@ update" and exiting 0). Fix is always: re-run `deploy_data.ps1`.
 ### Entry Point
 
 Both local and cloud use the same entry point (`kodak/dashboard/Home.py`) and
-modular pages (`kodak/dashboard/_pages/`). The old monolithic `heroku/app.py`
-and the `Procfile` (`web: streamlit run kodak/dashboard/Home.py ...`) are Heroku
-leftovers, no longer used by Streamlit Cloud.
+modular pages (`kodak/dashboard/_pages/`). The old monolithic `heroku/app.py`,
+the `Procfile` and `runtime.txt` were Heroku leftovers and have been removed.
+
+## Testing the dashboard
+
+`tests/test_dashboard_pages.py` renders every page headlessly through
+Streamlit's `AppTest` against the local database (skipped when the DB is
+absent). Run it after touching any page or `common.py`:
+
+```bash
+pytest tests/test_dashboard_pages.py -v
+```
 
 ## Code Conventions
 

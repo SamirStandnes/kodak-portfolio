@@ -20,7 +20,7 @@ st.set_page_config(
     layout="wide", initial_sidebar_state="expanded",
 )
 
-# resolve() is required: when launched via a relative path (Procfile, CLI),
+# resolve() is required: when launched via a relative path (CLI, cloud),
 # __file__ is relative and st.Page would resolve pages against the main
 # script's parent, doubling the path and crashing with "could not be found".
 _PAGES_DIR = Path(__file__).resolve().parent / "_pages"

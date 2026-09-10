@@ -7,132 +7,177 @@ if root_path not in sys.path:
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from kodak.dashboard.common import (
-    BASE_CURRENCY, CACHE_TTL, COLORS, page_setup,
-    format_local, apply_plotly_theme, convert_to_base,
+    BASE_CURRENCY, CACHE_TTL, COLORS, page_setup, format_local, format_pct,
+    render_chart, display_aggrid, load_valued_holdings, load_portfolio_history,
+    price_freshness,
 )
-from kodak.shared.db import get_connection, query_df
-from kodak.shared.calculations import get_holdings, get_income_and_costs
+from kodak.shared.db import get_db_connection, query_df
+from kodak.shared.calculations import get_income_and_costs
 
 page_setup("Portfolio Overview", "📈")
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def load_summary_data():
-    conn = get_connection()
-
-    df_holdings = get_holdings()
-
-    instruments = query_df(
-        'SELECT id, sector, region, country, asset_class, currency FROM instruments', conn
-    )
-    prices = query_df('''
-        SELECT mp.instrument_id, mp.close, i.currency
-        FROM market_prices mp
-        JOIN instruments i ON mp.instrument_id = i.id
-        WHERE (mp.instrument_id, mp.date) IN (
-            SELECT instrument_id, MAX(date) FROM market_prices GROUP BY instrument_id
-        )
-    ''', conn)
-
-    price_map = {r['instrument_id']: {'price': r['close'], 'currency': r['currency']} for _, r in prices.iterrows()}
-    meta_map = instruments.set_index('id').to_dict('index')
-
-    total_market_value = 0
-    total_cost = 0
-    fx_cache = {}
-    allocation_data = []
-
-    for _, row in df_holdings.iterrows():
-        inst_id = row['instrument_id']
-        mkt = price_map.get(inst_id)
-        meta = meta_map.get(inst_id, {})
-
-        if mkt:
-            price = mkt['price']
-            curr = mkt['currency']
-            val = row['quantity'] * convert_to_base(price, curr, fx_cache)
-        else:
-            # No current market price (illiquid/private holding, or prices not
-            # yet populated in this DB) — carry the position at cost basis so it
-            # still appears in allocation instead of being silently dropped.
-            # Without this, a momentarily empty market_prices table makes EVERY
-            # holding vanish and the page shows "No allocation data available"
-            # even though the portfolio plainly exists.
-            val = row['cost_basis_local']
-
-        total_market_value += val
-        total_cost += row['cost_basis_local']
-
-        allocation_data.append({
-            'Market Value': val,
-            'Sector': meta.get('sector') or 'Unknown',
-            'Region': meta.get('region') or 'Unknown',
-            'Country': meta.get('country') or 'Unknown',
-            'Asset Class': meta.get('asset_class') or 'Equity',
-            'Currency': meta.get('currency') or 'Unknown',
-        })
-
-    total_cash_base = query_df(
-        "SELECT COALESCE(SUM(amount_local), 0) as total FROM transactions", conn
-    ).iloc[0]['total']
-
-    income = get_income_and_costs()
-    conn.close()
-
-    return {
-        "market_value": total_market_value,
-        "cost_basis": total_cost,
-        "cash": total_cash_base,
-        "dividends": income['dividends'],
-        "interest": income['interest'],
-        "fees": income['fees'],
-        "allocation": pd.DataFrame(allocation_data),
-    }
+def load_cash_and_income():
+    with get_db_connection() as conn:
+        cash = query_df(
+            "SELECT COALESCE(SUM(amount_local), 0) as total FROM transactions", conn
+        ).iloc[0]['total']
+    return float(cash), get_income_and_costs()
 
 
-data = load_summary_data()
+df_val = load_valued_holdings()
+cash, income = load_cash_and_income()
+history = load_portfolio_history()
+latest_date, prev_date = price_freshness(df_val)
 
-net_worth = data['market_value'] + data['cash']
-total_gain = data['market_value'] - data['cost_basis']
-total_return_pct = (data['market_value'] / data['cost_basis'] - 1) * 100 if data['cost_basis'] > 0 else 0
+market_value = float(df_val['market_value_local'].sum())
+cost_basis = float(df_val['cost_basis_local'].sum())
+net_worth = market_value + cash
+total_gain = market_value - cost_basis
+total_return_pct = (market_value / cost_basis - 1) * 100 if cost_basis > 0 else 0
+change_value = float(df_val['day_change_local'].sum())
+change_pct = (change_value / (market_value - change_value) * 100) if (market_value - change_value) > 0 else 0
 
+# --- KEY METRICS ---
 col1, col2, col3 = st.columns(3)
-col1.metric("Total Net Equity", format_local(net_worth))
-col2.metric("Stock Holdings", format_local(data['market_value']))
-col3.metric("Cash & Margin", format_local(data['cash']), help="Negative = margin usage")
+col1.metric(
+    "Total Net Equity", format_local(net_worth),
+    delta=f"{format_local(change_value)} ({format_pct(change_pct, 2, sign=True)})" if prev_date else None,
+    help=f"Holdings + cash. Change is since the previous price refresh ({prev_date})." if prev_date else None,
+)
+col2.metric("Stock Holdings", format_local(market_value))
+col3.metric("Cash & Margin", format_local(cash), help="Negative = margin usage")
 
 col4, col5, col6 = st.columns(3)
-col4.metric("Unrealized P&L", format_local(total_gain), f"{format_local(total_return_pct, 1)}%")
-col5.metric("Cost Basis", format_local(data['cost_basis']))
-col6.metric("Dividends (All Time)", format_local(data['dividends']))
+col4.metric("Unrealized P&L", format_local(total_gain), format_pct(total_return_pct, 1, sign=True))
+col5.metric("Cost Basis", format_local(cost_basis))
+col6.metric("Dividends (All Time)", format_local(income['dividends']))
+
+if latest_date:
+    unpriced = int((~df_val['has_price']).sum())
+    note = f"Prices as of **{latest_date}**"
+    if prev_date:
+        note += f" · change measured against **{prev_date}**"
+    if unpriced:
+        note += f" · {unpriced} position(s) without a price are carried at cost"
+    st.caption(note)
 
 st.divider()
 
-st.subheader("Portfolio Allocation")
-df_alloc = data['allocation']
+# --- VALUE OVER TIME ---
+st.subheader("Portfolio Value")
+if history.empty or len(history) < 2:
+    st.info("Not enough price history yet. The curve appears once prices have been stored for two or more dates.")
+else:
+    first, last = history.iloc[0], history.iloc[-1]
+    ytd_start = history[history['date'] < pd.Timestamp(year=last['date'].year, month=1, day=1)]
+    base = ytd_start.iloc[-1] if not ytd_start.empty else first
+    pnl_period = (last['total_value'] - base['total_value']) - (last['net_deposits'] - base['net_deposits'])
+    pnl_pct = pnl_period / base['total_value'] * 100 if base['total_value'] > 0 else 0
+    label = "Year to Date P&L" if not ytd_start.empty else f"P&L since {first['date']:%d %b %Y}"
 
-if not df_alloc.empty:
+    m1, m2, m3 = st.columns(3)
+    m1.metric(label, format_local(pnl_period), format_pct(pnl_pct, 1, sign=True),
+              help="Change in total value minus net deposits over the period.")
+    m2.metric("Net Deposits (All Time)", format_local(last['net_deposits']),
+              help="Deposits minus withdrawals across all accounts.")
+    m3.metric("Total Gain vs Deposits", format_local(last['total_value'] - last['net_deposits']),
+              help="Current value minus everything you have put in.")
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=history['date'], y=history['total_value'], name='Total Value',
+        mode='lines', line=dict(color=COLORS['primary'], width=2.5),
+        fill='tozeroy', fillcolor='rgba(102,126,234,0.12)',
+        hovertemplate=f"%{{y:,.0f}} {BASE_CURRENCY}<extra>Total Value</extra>",
+    ))
+    fig.add_trace(go.Scatter(
+        x=history['date'], y=history['net_deposits'], name='Net Deposits',
+        mode='lines', line=dict(color=COLORS['neutral'], width=1.5, dash='dot'),
+        hovertemplate=f"%{{y:,.0f}} {BASE_CURRENCY}<extra>Net Deposits</extra>",
+    ))
+    fig.update_layout(
+        xaxis=dict(
+            rangeselector=dict(
+                buttons=[
+                    dict(count=1, label="1M", step="month", stepmode="backward"),
+                    dict(count=3, label="3M", step="month", stepmode="backward"),
+                    dict(count=6, label="6M", step="month", stepmode="backward"),
+                    dict(label="YTD", step="year", stepmode="todate"),
+                    dict(label="All", step="all"),
+                ],
+                bgcolor=COLORS['bg_surface'], activecolor=COLORS['primary'],
+                font=dict(color=COLORS['text']),
+            ),
+        ),
+        yaxis=dict(title=BASE_CURRENCY, rangemode='tozero'),
+        legend=dict(orientation='h', y=1.08, x=0),
+        margin=dict(l=40, r=20, t=50, b=40),
+    )
+    render_chart(fig)
+    st.caption(
+        "Built from stored closing prices and FX rates on each refresh date; "
+        "prices are carried forward between refreshes."
+    )
+
+st.divider()
+
+# --- MOVERS SINCE LAST REFRESH ---
+movers = df_val[df_val['day_change_pct'].notna()]
+if not movers.empty and prev_date:
+    st.subheader(f"Movers since {prev_date}")
+    mcol1, mcol2 = st.columns(2)
+    mover_cols = {
+        "Symbol":   {"width": 110},
+        "Change %": {"type": "percent", "decimals": 2, "color_signed": True, "width": 110},
+        f"Change ({BASE_CURRENCY})": {"type": "currency", "decimals": 0, "color_signed": True, "width": 140},
+    }
+
+    def mover_frame(frame):
+        return pd.DataFrame({
+            "Symbol": frame['symbol'],
+            "Change %": frame['day_change_pct'].round(2),
+            f"Change ({BASE_CURRENCY})": frame['day_change_local'].round(),
+        })
+
+    with mcol1:
+        st.caption("Top gainers")
+        display_aggrid(mover_frame(movers.nlargest(5, 'day_change_pct')), columns=mover_cols, height=230)
+    with mcol2:
+        st.caption("Top losers")
+        display_aggrid(mover_frame(movers.nsmallest(5, 'day_change_pct')), columns=mover_cols, height=230)
+    st.divider()
+
+# --- ALLOCATION ---
+st.subheader("Portfolio Allocation")
+
+if not df_val.empty and market_value > 0:
     palette = [COLORS['primary'], COLORS['positive'], COLORS['warning'],
                COLORS['purple'], COLORS['light_blue'], COLORS['negative'], COLORS['neutral']]
+    df_alloc = df_val.rename(columns={
+        'market_value_local': 'Market Value', 'sector': 'Sector', 'region': 'Region',
+        'country': 'Country', 'asset_class': 'Asset Class', 'currency': 'Currency',
+    })
 
-    def make_pie(df, col, title):
-        fig = px.pie(df, values='Market Value', names=col, title=title,
+    def make_pie(col, title):
+        fig = px.pie(df_alloc, values='Market Value', names=col, title=title,
                      color_discrete_sequence=palette, hole=0.4)
-        apply_plotly_theme(fig)
+        fig.update_traces(
+            textposition='inside', textinfo='percent+label',
+            hovertemplate=f"<b>%{{label}}</b><br>%{{value:,.0f}} {BASE_CURRENCY}<br>%{{percent}}<extra></extra>",
+        )
+        fig.update_layout(hovermode='closest')
         return fig
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Sector", "Region", "Currency", "Asset Class", "Country"])
-
-    with tab1:
-        st.plotly_chart(make_pie(df_alloc, 'Sector', 'By Sector'), use_container_width=True, theme=None)
-    with tab2:
-        st.plotly_chart(make_pie(df_alloc, 'Region', 'By Region'), use_container_width=True, theme=None)
-    with tab3:
-        st.plotly_chart(make_pie(df_alloc, 'Currency', 'By Currency'), use_container_width=True, theme=None)
-    with tab4:
-        st.plotly_chart(make_pie(df_alloc, 'Asset Class', 'By Asset Class'), use_container_width=True, theme=None)
-    with tab5:
-        st.plotly_chart(make_pie(df_alloc, 'Country', 'By Country'), use_container_width=True, theme=None)
+    tabs = st.tabs(["Sector", "Region", "Currency", "Asset Class", "Country"])
+    for tab, (col, title) in zip(tabs, [
+        ('Sector', 'By Sector'), ('Region', 'By Region'), ('Currency', 'By Currency'),
+        ('Asset Class', 'By Asset Class'), ('Country', 'By Country'),
+    ]):
+        with tab:
+            render_chart(make_pie(col, title))
 else:
     st.info("No allocation data available.")

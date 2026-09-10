@@ -7,192 +7,181 @@ if root_path not in sys.path:
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from kodak.dashboard.common import (
-    BASE_CURRENCY, CACHE_TTL, COLORS, page_setup, format_local,
-    display_table, display_aggrid, number_col, apply_plotly_theme, convert_to_base,
+    BASE_CURRENCY, CACHE_TTL, COLORS, page_setup, format_local, format_pct,
+    display_aggrid, render_chart, load_valued_holdings, price_freshness,
 )
-from kodak.shared.db import get_connection, query_df
-from kodak.shared.calculations import get_holdings
+from kodak.shared.db import get_db_connection, query_df
+from kodak.shared.calculations import get_price_history
 
 page_setup("Holdings", "🏦")
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def load_holdings_data():
-    conn = get_connection()
-    df_holdings = get_holdings()
-
-    # Latest close + previous close per instrument (for daily change).
-    # Use query_df (cursor-based) — pd.read_sql_query bypasses the Heroku
-    # SQL translation layer and crashes on Postgres.
-    prices = query_df('''
-        WITH ranked AS (
-            SELECT instrument_id, date, close,
-                   ROW_NUMBER() OVER (PARTITION BY instrument_id ORDER BY date DESC) AS rn
-            FROM market_prices
-        )
-        SELECT
-            latest.instrument_id, latest.close AS close, latest.date AS price_date,
-            prev.close AS prev_close,
-            i.currency, COALESCE(i.symbol, i.isin) AS symbol,
-            i.name, i.sector, i.region, i.country, i.asset_class
-        FROM ranked AS latest
-        LEFT JOIN ranked AS prev
-          ON latest.instrument_id = prev.instrument_id AND prev.rn = 2
-        JOIN instruments i ON latest.instrument_id = i.id
-        WHERE latest.rn = 1
-    ''', conn)
-
-    price_map = {}
-    for _, row in prices.iterrows():
-        prev = row['prev_close']
-        day_change_pct = (
-            (row['close'] / prev - 1) * 100
-            if prev and prev > 0 and pd.notna(prev) else None
-        )
-        price_map[row['instrument_id']] = {
-            'price': row['close'], 'currency': row['currency'],
-            'name': row['name'], 'sector': row['sector'],
-            'region': row['region'], 'country': row['country'],
-            'asset_class': row['asset_class'],
-            'day_change_pct': day_change_pct,
-        }
-
-    # Instrument metadata for ALL instruments — used to label holdings that
-    # have no current market_prices row (the price join above excludes them).
-    meta = query_df(
-        'SELECT id, sector, region, country, asset_class FROM instruments', conn
-    )
-    meta_map = meta.set_index('id').to_dict('index')
-    conn.close()
-
-    data = []
-    fx_cache = {}
-    total_val = 0
-    total_day_change_value = 0  # day change in base currency
-
-    for _, row in df_holdings.iterrows():
-        inst_id = row['instrument_id']
-        mkt = price_map.get(inst_id)
-        m = meta_map.get(inst_id, {})
-        cost_basis = row['cost_basis_local']
-
-        if mkt:
-            price = mkt['price']
-            curr = mkt['currency']
-            market_val = row['quantity'] * convert_to_base(price, curr, fx_cache)
-            sector, region = mkt['sector'], mkt['region']
-            country, asset_class = mkt['country'], mkt['asset_class']
-            day_pct = mkt['day_change_pct']
-        else:
-            # No current market price (illiquid/private holding, or prices not
-            # yet populated in this DB — e.g. right after a deploy drops &
-            # recreates market_prices, before the price cron repopulates).
-            # Carry the position at cost basis so it still appears instead of
-            # silently vanishing and leaving an empty, column-less DataFrame
-            # that crashes sort_values('Market Value'). Self-heals to live
-            # prices once market_prices is populated.
-            market_val = cost_basis
-            sector, region = m.get('sector'), m.get('region')
-            country, asset_class = m.get('country'), m.get('asset_class')
-            day_pct = None
-
-        gain = market_val - cost_basis
-        ret_pct = (market_val / cost_basis - 1) * 100 if cost_basis > 0 else 0
-        day_value = market_val * (day_pct / 100) if day_pct is not None else 0
-
-        total_val += market_val
-        total_day_change_value += day_value
-
-        data.append({
-            "Symbol": row['symbol'],
-            "Quantity": round(row['quantity']),
-            "Sector": sector,
-            "Region": region,
-            "Country": country,
-            "Type": asset_class,
-            "Market Value": round(market_val),
-            "Day %": day_pct,
-            "Day Δ": round(day_value),
-            "Gain/Loss": round(gain),
-            "Return %": ret_pct,
-        })
-
-    columns = ["Symbol", "Quantity", "Sector", "Region", "Country", "Type",
-               "Market Value", "Day %", "Day Δ", "Gain/Loss", "Return %", "Weight %"]
-    df = pd.DataFrame(data, columns=columns)
-    if not df.empty:
-        df['Weight %'] = (df['Market Value'] / total_val) * 100 if total_val else 0
-    return df.sort_values('Market Value', ascending=False), total_val, total_day_change_value
+def load_price_history(instrument_id: int) -> pd.DataFrame:
+    return get_price_history(instrument_id)
 
 
-df, total_val, total_day_change_value = load_holdings_data()
+@st.cache_data(ttl=CACHE_TTL)
+def load_trades(instrument_id: int) -> pd.DataFrame:
+    """BUY/SELL executions for one instrument (price in the asset's currency)."""
+    with get_db_connection() as conn:
+        df = query_df(
+            "SELECT date, type, quantity, price FROM transactions "
+            "WHERE instrument_id = ? AND type IN ('BUY', 'SELL') AND price > 0 ORDER BY date",
+            conn, params=(int(instrument_id),))
+    if df.empty:
+        return df
+    df['date'] = pd.to_datetime(df['date'].astype(str).str[:10], format='%Y-%m-%d')
+    return df
+
+
+df_val = load_valued_holdings()
+latest_date, prev_date = price_freshness(df_val)
+
+total_val = float(df_val['market_value_local'].sum())
+change_value = float(df_val['day_change_local'].sum())
+change_pct = (change_value / (total_val - change_value) * 100) if (total_val - change_value) > 0 else 0
+unpriced = int((~df_val['has_price']).sum()) if not df_val.empty else 0
 
 # --- KEY METRICS ---
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total Equity Value", format_local(df['Market Value'].sum()))
+col1.metric("Total Equity Value", format_local(total_val))
 
-if not df.empty:
-    day_change_pct_total = (total_day_change_value / (total_val - total_day_change_value)) * 100 if (total_val - total_day_change_value) > 0 else 0
+if not df_val.empty:
     col2.metric(
-        "Today",
-        format_local(total_day_change_value),
-        f"{day_change_pct_total:+.2f}%",
-        help="Daily change since previous close, in base currency",
+        f"Since {prev_date}" if prev_date else "Change",
+        format_local(change_value),
+        format_pct(change_pct, 2, sign=True),
+        help=(f"Move between the two most recent stored prices ({prev_date} → {latest_date}). "
+              "Prices are refreshed on demand, so this is not necessarily one trading day."),
     )
-    top5_val = df.head(5)['Market Value'].sum()
-    top5_pct = (top5_val / total_val) * 100 if total_val > 0 else 0
-    col3.metric("Top 5 Concentration", f"{top5_pct:.1f}%",
-                help="Percentage of portfolio in your 5 largest positions")
-    col4.metric("Positions", len(df))
+    top5_pct = df_val.head(5)['weight_pct'].sum()
+    col3.metric("Top 5 Concentration", format_pct(top5_pct, 1),
+                help="Share of the portfolio in your 5 largest positions")
+    col4.metric("Positions", len(df_val),
+                help=f"{unpriced} position(s) have no stored price and are carried at cost" if unpriced else None)
+
+if latest_date:
+    st.caption(f"Prices as of **{latest_date}**")
 
 st.divider()
 
 # --- CONCENTRATION BAR ---
-if not df.empty:
+if not df_val.empty:
     st.subheader("Position Sizes")
-    df_bar = df.head(15).copy()
+    df_bar = df_val.head(15)
     fig = px.bar(
-        df_bar, x='Market Value', y='Symbol', orientation='h',
-        color='Return %',
-        color_continuous_scale=['#E74C3C', '#95A5A6', '#27AE60'],
+        df_bar, x='market_value_local', y='symbol', orientation='h',
+        color='return_pct',
+        color_continuous_scale=[COLORS['negative'], COLORS['neutral'], COLORS['positive']],
         color_continuous_midpoint=0,
-        labels={'Market Value': f'Market Value ({BASE_CURRENCY})', 'Symbol': '', 'Return %': 'Return'},
+        labels={'market_value_local': f'Market Value ({BASE_CURRENCY})', 'symbol': '', 'return_pct': 'Return %'},
     )
     fig.update_traces(hovertemplate=(
         "<b>%{y}</b><br>"
         f"Market Value: %{{x:,.0f}} {BASE_CURRENCY}<br>"
         "Return: %{marker.color:+.2f}%<extra></extra>"
     ))
-    apply_plotly_theme(fig)
     fig.update_layout(
-        yaxis=dict(autorange='reversed'),
-        hovermode='closest',
-        xaxis_title=f'Market Value ({BASE_CURRENCY})',
-        yaxis_title='',
+        yaxis=dict(autorange='reversed'), hovermode='closest',
+        xaxis_title=f'Market Value ({BASE_CURRENCY})', yaxis_title='',
     )
-    st.plotly_chart(fig, use_container_width=True, theme=None)
+    render_chart(fig)
 
 st.divider()
 
 # --- HOLDINGS TABLE ---
 st.subheader("All Holdings")
+table = pd.DataFrame({
+    "Symbol": df_val['symbol'],
+    "Name": df_val['name'],
+    "Quantity": df_val['quantity'],
+    "Price": df_val['price'],
+    "Ccy": df_val['currency'],
+    "Sector": df_val['sector'],
+    "Region": df_val['region'],
+    "Country": df_val['country'],
+    "Type": df_val['asset_class'],
+    "Market Value": df_val['market_value_local'].round(),
+    "Cost Basis": df_val['cost_basis_local'].round(),
+    "Change %": df_val['day_change_pct'],
+    "Change Δ": df_val['day_change_local'].round(),
+    "Gain/Loss": df_val['gain_local'].round(),
+    "Return %": df_val['return_pct'],
+    "Weight %": df_val['weight_pct'],
+})
 display_aggrid(
-    df,
+    table,
     columns={
         "Symbol":       {"width": 110},
-        "Quantity":     {"type": "number", "decimals": 0, "width": 100},
+        "Name":         {"width": 180},
+        "Quantity":     {"type": "quantity", "decimals": 4, "width": 100},
+        "Price":        {"type": "number", "decimals": 2, "width": 100},
+        "Ccy":          {"width": 70},
         "Sector":       {"width": 140},
         "Region":       {"width": 110},
         "Country":      {"width": 110},
         "Type":         {"width": 100},
         "Market Value": {"type": "currency", "decimals": 0, "width": 140},
-        "Day %":        {"type": "percent",  "decimals": 2, "color_signed": True, "width": 100},
-        "Day Δ":        {"type": "currency", "decimals": 0, "color_signed": True, "width": 110},
+        "Cost Basis":   {"type": "currency", "decimals": 0, "width": 130},
+        "Change %":     {"type": "percent",  "decimals": 2, "color_signed": True, "width": 110},
+        "Change Δ":     {"type": "currency", "decimals": 0, "color_signed": True, "width": 120},
         "Gain/Loss":    {"type": "currency", "decimals": 0, "color_signed": True, "width": 130},
         "Return %":     {"type": "percent",  "decimals": 1, "color_signed": True, "width": 110},
-        "Weight %":     {"type": "progress", "max": 100, "width": 140},
+        "Weight %":     {"type": "progress", "max": 100, "decimals": 1, "width": 140},
     },
     pin_left=["Symbol"],
     height=560,
 )
+st.caption(f"Market Value, Cost Basis, Change Δ and Gain/Loss are in {BASE_CURRENCY}; Price is in the asset's currency.")
+
+st.divider()
+
+# --- PRICE HISTORY ---
+st.subheader("Price History")
+priced = df_val[df_val['has_price']]
+if priced.empty:
+    st.info("No stored price history yet.")
+else:
+    options = priced['symbol'].tolist()
+    chosen = st.selectbox("Instrument", options, label_visibility="collapsed")
+    row = priced[priced['symbol'] == chosen].iloc[0]
+    hist = load_price_history(int(row['instrument_id']))
+    if len(hist) < 2:
+        st.info("Only one stored price for this instrument so far.")
+    else:
+        first_close, last_close = hist['close'].iloc[0], hist['close'].iloc[-1]
+        period_pct = (last_close / first_close - 1) * 100 if first_close else 0
+        hcol1, hcol2, hcol3 = st.columns(3)
+        hcol1.metric("Last Close", f"{format_local(last_close, 2)} {row['currency']}")
+        hcol2.metric(f"Since {hist['date'].iloc[0]:%d %b %Y}", format_pct(period_pct, 1, sign=True))
+        hcol3.metric("Held", format_local(row['quantity'], 0 if float(row['quantity']).is_integer() else 2))
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=hist['date'], y=hist['close'], mode='lines', name='Close',
+            line=dict(color=COLORS['primary'], width=2),
+            hovertemplate=f"%{{y:,.2f}} {row['currency']}<extra>Close</extra>",
+        ))
+        trades = load_trades(int(row['instrument_id']))
+        if not trades.empty:
+            window = trades[trades['date'] >= hist['date'].iloc[0]]
+            for t_type, color, symbol_mark in (("BUY", COLORS['positive'], "triangle-up"),
+                                              ("SELL", COLORS['negative'], "triangle-down")):
+                sub = window[window['type'] == t_type]
+                if sub.empty:
+                    continue
+                fig.add_trace(go.Scatter(
+                    x=sub['date'], y=sub['price'], mode='markers', name=t_type.title(),
+                    marker=dict(color=color, size=11, symbol=symbol_mark, line=dict(width=1, color=COLORS['bg'])),
+                    customdata=sub['quantity'].abs(),
+                    hovertemplate=f"{t_type.title()} %{{customdata:,.0f}} @ %{{y:,.2f}} {row['currency']}<extra></extra>",
+                ))
+        fig.update_layout(
+            hovermode='x unified', yaxis_title=row['currency'], xaxis_title='',
+            legend=dict(orientation='h', y=1.08, x=0),
+            margin=dict(l=40, r=20, t=40, b=40),
+        )
+        render_chart(fig)

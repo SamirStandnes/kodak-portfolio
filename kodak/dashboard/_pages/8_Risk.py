@@ -7,95 +7,42 @@ if root_path not in sys.path:
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from kodak.dashboard.common import (
-    BASE_CURRENCY, CACHE_TTL, COLORS, page_setup, format_local,
-    display_table, number_col, apply_plotly_theme, convert_to_base,
+    BASE_CURRENCY, COLORS, page_setup, format_pct,
+    display_table, number_col, render_chart, load_valued_holdings,
 )
-from kodak.shared.db import get_connection, query_df
-from kodak.shared.calculations import get_holdings
 
-page_setup("Risk & Concentration", "🎯")
+page_setup("Risk & Concentration", "⚠️")
 
+df_val = load_valued_holdings()
 
-@st.cache_data(ttl=CACHE_TTL)
-def load_risk_data():
-    conn = get_connection()
-    df_holdings = get_holdings()
-
-    prices = query_df('''
-        SELECT mp.instrument_id, mp.close, i.currency, COALESCE(i.symbol, i.isin) as symbol,
-               i.sector, i.region, i.country, i.asset_class
-        FROM market_prices mp
-        JOIN instruments i ON mp.instrument_id = i.id
-        WHERE (mp.instrument_id, mp.date) IN (
-            SELECT instrument_id, MAX(date) FROM market_prices GROUP BY instrument_id
-        )
-    ''', conn)
-    conn.close()
-
-    price_map = {}
-    for _, row in prices.iterrows():
-        price_map[row['instrument_id']] = {
-            'price': row['close'], 'currency': row['currency'],
-            'symbol': row['symbol'], 'sector': row['sector'],
-            'region': row['region'], 'country': row['country'],
-            'asset_class': row['asset_class'],
-        }
-
-    data = []
-    fx_cache = {}
-    total_val = 0
-
-    for _, row in df_holdings.iterrows():
-        inst_id = row['instrument_id']
-        mkt = price_map.get(inst_id)
-        if not mkt:
-            continue
-
-        val = row['quantity'] * convert_to_base(mkt['price'], mkt['currency'], fx_cache)
-        total_val += val
-
-        data.append({
-            'Symbol': mkt['symbol'],
-            'Market Value': val,
-            'Currency': mkt['currency'],
-            'Sector': mkt['sector'] or 'Unknown',
-            'Region': mkt['region'] or 'Unknown',
-            'Country': mkt['country'] or 'Unknown',
-            'Asset Class': mkt['asset_class'] or 'Unknown',
-        })
-
-    df = pd.DataFrame(data).sort_values('Market Value', ascending=False)
-    if not df.empty:
-        df['Weight %'] = (df['Market Value'] / total_val) * 100
-    return df, total_val
-
-
-df, total_val = load_risk_data()
-
-if df.empty:
+if df_val.empty:
     st.info("No holdings data available.")
     st.stop()
+
+total_val = float(df_val['market_value_local'].sum())
+df = df_val.rename(columns={
+    'symbol': 'Symbol', 'market_value_local': 'Market Value', 'weight_pct': 'Weight %',
+    'currency': 'Currency', 'sector': 'Sector', 'region': 'Region',
+    'country': 'Country', 'asset_class': 'Asset Class',
+})
 
 # --- KEY METRICS ---
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Positions", len(df))
+col2.metric("Largest Position", format_pct(df.iloc[0]['Weight %'], 1), help=df.iloc[0]['Symbol'])
+col3.metric("Top 5 Concentration", format_pct(df.head(5)['Weight %'].sum(), 1))
+col4.metric("Top 10 Concentration", format_pct(df.head(10)['Weight %'].sum(), 1))
 
-top1_pct = df.iloc[0]['Weight %'] if len(df) > 0 else 0
-top5_pct = df.head(5)['Weight %'].sum()
-top10_pct = df.head(10)['Weight %'].sum()
-
-col2.metric("Largest Position", f"{top1_pct:.1f}%", help=df.iloc[0]['Symbol'])
-col3.metric("Top 5 Concentration", f"{top5_pct:.1f}%")
-col4.metric("Top 10 Concentration", f"{top10_pct:.1f}%")
+unpriced = int((~df_val['has_price']).sum())
+if unpriced:
+    st.caption(f"{unpriced} position(s) without a stored price are carried at cost basis.")
 
 st.divider()
 
 # --- SINGLE STOCK CONCENTRATION ---
 st.subheader("Position Concentration")
 
-# Highlight positions > 10%
 df_conc = df[['Symbol', 'Market Value', 'Weight %']].copy()
 df_conc['Status'] = df_conc['Weight %'].apply(
     lambda w: '🔴 High' if w > 15 else ('🟡 Elevated' if w > 10 else '🟢 OK')
@@ -113,79 +60,44 @@ fig_conc = px.bar(
 fig_conc.update_traces(hovertemplate="<b>%{y}</b><br>Weight: %{x:.2f}%<extra></extra>")
 fig_conc.add_vline(x=10, line_dash='dash', line_color=COLORS['warning'],
                    annotation_text='10% threshold', annotation_position='top right')
-apply_plotly_theme(fig_conc)
 fig_conc.update_layout(
-    yaxis=dict(autorange='reversed'),
-    hovermode='closest',
-    xaxis_title='Portfolio Weight (%)',
-    yaxis_title='',
+    yaxis=dict(autorange='reversed'), hovermode='closest',
+    xaxis_title='Portfolio Weight (%)', yaxis_title='',
+    height=max(400, 24 * len(df_conc) + 120),
 )
-st.plotly_chart(fig_conc, use_container_width=True, theme=None)
+render_chart(fig_conc)
 
 display_table(df_conc, {
     "Market Value": number_col(f"Value ({BASE_CURRENCY})"),
     "Weight %": number_col("Weight %", fmt="%.1f%%"),
-})
+}, height=min(560, 40 * len(df_conc) + 60))
 
 st.divider()
 
-# --- CURRENCY CONCENTRATION ---
-st.subheader("Currency Exposure")
-df_curr = df.groupby('Currency')['Market Value'].sum().reset_index()
-df_curr['Weight %'] = (df_curr['Market Value'] / total_val) * 100
-df_curr = df_curr.sort_values('Market Value', ascending=False)
 
-ccol1, ccol2 = st.columns(2)
-with ccol1:
-    fig_curr = px.pie(df_curr, values='Market Value', names='Currency',
-                      color_discrete_sequence=palette, hole=0.4, title='Currency Split')
-    apply_plotly_theme(fig_curr)
-    st.plotly_chart(fig_curr, use_container_width=True, theme=None)
+def exposure_section(title: str, column: str, chart_title: str):
+    st.subheader(title)
+    grouped = df.groupby(column)['Market Value'].sum().reset_index()
+    grouped['Weight %'] = grouped['Market Value'] / total_val * 100
+    grouped = grouped.sort_values('Market Value', ascending=False)
 
-with ccol2:
-    display_table(df_curr, {
-        "Market Value": number_col(f"Value ({BASE_CURRENCY})"),
-        "Weight %": number_col("Weight %", fmt="%.1f%%"),
-    }, height=300)
+    c1, c2 = st.columns(2)
+    with c1:
+        fig = px.pie(grouped, values='Market Value', names=column,
+                     color_discrete_sequence=palette, hole=0.4, title=chart_title)
+        fig.update_traces(
+            hovertemplate=f"<b>%{{label}}</b><br>%{{value:,.0f}} {BASE_CURRENCY}<br>%{{percent}}<extra></extra>")
+        fig.update_layout(hovermode='closest')
+        render_chart(fig)
+    with c2:
+        display_table(grouped, {
+            "Market Value": number_col(f"Value ({BASE_CURRENCY})"),
+            "Weight %": number_col("Weight %", fmt="%.1f%%"),
+        }, height=300)
 
+
+exposure_section("Currency Exposure", 'Currency', 'Currency Split')
 st.divider()
-
-# --- SECTOR CONCENTRATION ---
-st.subheader("Sector Exposure")
-df_sector = df.groupby('Sector')['Market Value'].sum().reset_index()
-df_sector['Weight %'] = (df_sector['Market Value'] / total_val) * 100
-df_sector = df_sector.sort_values('Market Value', ascending=False)
-
-scol1, scol2 = st.columns(2)
-with scol1:
-    fig_sec = px.pie(df_sector, values='Market Value', names='Sector',
-                     color_discrete_sequence=palette, hole=0.4, title='Sector Split')
-    apply_plotly_theme(fig_sec)
-    st.plotly_chart(fig_sec, use_container_width=True, theme=None)
-
-with scol2:
-    display_table(df_sector, {
-        "Market Value": number_col(f"Value ({BASE_CURRENCY})"),
-        "Weight %": number_col("Weight %", fmt="%.1f%%"),
-    }, height=300)
-
+exposure_section("Sector Exposure", 'Sector', 'Sector Split')
 st.divider()
-
-# --- GEOGRAPHIC CONCENTRATION ---
-st.subheader("Geographic Exposure")
-df_geo = df.groupby('Country')['Market Value'].sum().reset_index()
-df_geo['Weight %'] = (df_geo['Market Value'] / total_val) * 100
-df_geo = df_geo.sort_values('Market Value', ascending=False)
-
-gcol1, gcol2 = st.columns(2)
-with gcol1:
-    fig_geo = px.pie(df_geo, values='Market Value', names='Country',
-                     color_discrete_sequence=palette, hole=0.4, title='Country Split')
-    apply_plotly_theme(fig_geo)
-    st.plotly_chart(fig_geo, use_container_width=True, theme=None)
-
-with gcol2:
-    display_table(df_geo, {
-        "Market Value": number_col(f"Value ({BASE_CURRENCY})"),
-        "Weight %": number_col("Weight %", fmt="%.1f%%"),
-    }, height=300)
+exposure_section("Geographic Exposure", 'Country', 'Country Split')
