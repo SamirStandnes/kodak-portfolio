@@ -1427,10 +1427,11 @@ def get_portfolio_value_history() -> pd.DataFrame:
         txns = query_df(
             "SELECT date, type, instrument_id, quantity, amount_local FROM transactions",
             conn)
-        instruments = query_df("SELECT id, currency FROM instruments", conn)
+        instruments = query_df("SELECT id, symbol, currency FROM instruments", conn)
 
     if txns.empty:
         return empty
+    split_map = get_internal_splits()
 
     def to_day(series: pd.Series) -> pd.Series:
         return pd.to_datetime(series.astype(str).str[:10], format='%Y-%m-%d')
@@ -1460,6 +1461,14 @@ def get_portfolio_value_history() -> pd.DataFrame:
     qty = running(pos, 'quantity')
     qty = qty.where(qty.abs() > MIN_HOLDING_QTY, 0.0)
     net_invested = (-running(pos, 'amount_local')).clip(lower=0.0)
+
+    # Yahoo closes are always in today's share scale, but the ledger quantity
+    # before a split (BYTTE pair) is in the old scale. Rescale pre-split
+    # quantities exactly like get_adjusted_qty() does for the yearly curve.
+    symbol_of = dict(zip(instruments['id'], instruments['symbol']))
+    for inst_id in qty.columns:
+        for split_date, ratio in split_map.get(symbol_of.get(inst_id), []):
+            qty.loc[qty.index < split_date, inst_id] *= ratio
 
     # --- Price matrix (ffill between refreshes, bfill before first close) ---
     px = (prices.pivot_table(index='date', columns='instrument_id', values='close', aggfunc='last')

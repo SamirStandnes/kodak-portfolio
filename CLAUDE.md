@@ -28,6 +28,11 @@ streamlit run kodak/dashboard/Home.py
 
 # Refresh market prices only
 .\workflows\refresh_market_data.ps1
+
+# One-off: backfill daily price + FX history from Yahoo for the whole life of
+# the portfolio (feeds the Overview value curve; also flags instruments whose
+# currency in instruments/isin_map.csv disagrees with Yahoo). --dry-run to preview.
+python -m kodak.maintenance.backfill_prices
 ```
 
 ## Architecture Overview

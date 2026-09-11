@@ -260,6 +260,20 @@ class TestPortfolioValueHistory:
         assert hist.iloc[-1]["holdings_value"] == pytest.approx(valued["market_value_local"].sum())
         assert hist.iloc[-1]["total_value"] == pytest.approx(valued["market_value_local"].sum() + 2000.0)
 
+    def test_pre_split_quantity_is_rescaled_to_yahoo_share_scale(self, temp_db):
+        """A 1:10 split recorded as a BYTTE pair: Yahoo's earlier closes are
+        already divided by 10, so the 10 old shares must count as 100."""
+        add_instrument(temp_db, 1, "SPLIT")
+        add_txn(temp_db, "2026-01-01", "BUY", -1000.0, instrument_id=1, quantity=10)
+        add_txn(temp_db, "2026-01-06", "BYTTE UTTAK VP", 0.0, instrument_id=1, quantity=-10)
+        add_txn(temp_db, "2026-01-06", "BYTTE INNLEGG VP", 0.0, instrument_id=1, quantity=100)
+        add_price(temp_db, 1, "2026-01-02", 10.0)    # post-split scale (was 100 pre-split)
+        add_price(temp_db, 1, "2026-01-09", 12.0)
+
+        df = calc.get_portfolio_value_history().set_index("date")
+        assert df.loc["2026-01-02", "holdings_value"] == pytest.approx(100 * 10.0)
+        assert df.loc["2026-01-09", "holdings_value"] == pytest.approx(100 * 12.0)
+
     def test_timestamps_in_date_column_are_normalised(self, temp_db):
         add_instrument(temp_db, 1, "AAA")
         add_txn(temp_db, "2026-01-02 00:00:00", "BUY", -100.0, instrument_id=1, quantity=1)

@@ -14,7 +14,7 @@ DE0008404005,ALV.DE,EUR,Financial Services,Europe,Germany,Equity
 US0846707026,BRK-B,USD,Conglomerate,Americas,United States,Equity
 US01609W1027,BABA,USD,Consumer Cyclical,Asia,Hong Kong,Equity
 FR0010361683,LYMD.DE,EUR,Broad Market,Asia,India,ETF
-IE00BG0J4C88,LOCK.L,EUR,Technology,Global,Multi-country,ETF
+IE00BG0J4C88,LOCK.L,USD,Technology,Global,Multi-country,ETF
 IE00BYZK4883,DGTL.MI,EUR,Technology,Global,Multi-country,ETF
 IE00BMTD2J60,0P0001K6NJ.IR,NOK,Broad Market,Global,Global,Fund
 NO0010096985,EQNR.OL,NOK,Energy,Nordics,Norway,Equity
@@ -28,7 +28,7 @@ IE00BMTD2X05,0P0001K6NN.IR,NOK,Broad Market,Americas,United States,Equity
 IE00BMTD2N07,0P0001K6NF.IR,NOK,Broad Market,Europe,Multi-country,Equity
 US2546871060,DIS,USD,Communication Services,Americas,United States,Equity
 NO0010612450,SBO.OL,NOK,Real Estate,Nordics,Norway,Equity
-LU2009202107,EMXC.L,EUR,Broad Market,Emerging Markets,Multi-country,ETF
+LU2009202107,EMXC.L,USD,Broad Market,Emerging Markets,Multi-country,ETF
 NO0003053605,STB.OL,NOK,Financial Services,Nordics,Norway,Equity
 US33616C1009,FRCB,USD,Financial Services,Americas,United States,Equity
 IE00BYZK4776,HEAL.L,USD,Healthcare,Global,Global,ETF
@@ -45,14 +45,14 @@ US74347G4322,SQQQ,USD,Technology,Americas,United States,ETF
 NO0010848104,BEAR TESLA X1 NORDNET N,NOK,Consumer Cyclical,Americas,United States,Certificate
 NO0010963275,DSRT.OL,NOK,Basic Materials,Nordics,Norway,Equity
 US7458671010,PHM,USD,Consumer Cyclical,Americas,United States,Equity
-IE00BL25JM42,XDEV.DE,USD,Broad Market,Global,Global,ETF
+IE00BL25JM42,XDEV.DE,EUR,Broad Market,Global,Global,ETF
 NO0010793961,TRACKER GULL NORDNET,NOK,Precious Metals,Global,Global,Certificate
 US46140H4039,DBO,USD,Commodities,Global,Global,ETF
 CA0679011084,GOLD,USD,Precious Metals,Americas,United States,Equity
 US6516391066,NEM,USD,Basic Materials,Americas,United States,Equity
 US4642851053,IAU,USD,Precious Metals,Global,Global,ETF
 SE0005993110,0P000134K7.IR,NOK,Broad Market,Nordics,Norway,Fund
-IE00B4L5Y983,EUNL.DE,USD,Broad Market,Global,Global,ETF
+IE00B4L5Y983,EUNL.DE,EUR,Broad Market,Global,Global,ETF
 SE0009723026,OBX.OL,NOK,Broad Market,Nordics,Norway,ETF
 US97717W4713,USDU,USD,Currency,Americas,United States,ETF
 US46141D2036,UUP,USD,Currency,Americas,United States,ETF

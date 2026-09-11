@@ -107,6 +107,8 @@ else:
                     dict(count=3, label="3M", step="month", stepmode="backward"),
                     dict(count=6, label="6M", step="month", stepmode="backward"),
                     dict(label="YTD", step="year", stepmode="todate"),
+                    dict(count=1, label="1Y", step="year", stepmode="backward"),
+                    dict(count=3, label="3Y", step="year", stepmode="backward"),
                     dict(label="All", step="all"),
                 ],
                 bgcolor=COLORS['bg_surface'], activecolor=COLORS['primary'],
@@ -119,8 +121,10 @@ else:
     )
     render_chart(fig)
     st.caption(
-        "Built from stored closing prices and FX rates on each refresh date; "
-        "prices are carried forward between refreshes."
+        f"Built from closing prices and FX rates stored in the database "
+        f"({first['date']:%d %b %Y} → {last['date']:%d %b %Y}); prices are carried forward "
+        "between stored dates. Holdings without a price are carried at net cash invested. "
+        "Extend or repair the history with `python -m kodak.maintenance.backfill_prices`."
     )
 
 st.divider()
