@@ -75,7 +75,7 @@ def run_audit() -> List[Finding]:
             JOIN accounts a ON a.id = t.account_id
             LEFT JOIN instruments i ON i.id = t.instrument_id
         """, conn)
-        instruments = query_df("SELECT id, symbol, isin, currency FROM instruments", conn)
+        instruments = query_df("SELECT id, symbol, isin, currency, asset_class FROM instruments", conn)
         latest_prices = query_df(
             "SELECT instrument_id, MAX(date) AS latest FROM market_prices GROUP BY instrument_id", conn)
         bad_ccy = query_df("""
@@ -150,10 +150,27 @@ def run_audit() -> List[Finding]:
     held = _held_ids(txns)
     inst = instruments.set_index('id')
     latest = dict(zip(latest_prices['instrument_id'], latest_prices['latest'].astype(str)))
-    unpriced = [inst.loc[i, 'symbol'] or inst.loc[i, 'isin'] for i in held if i not in latest]
-    if unpriced:
+    # A holding with no price is only a problem if money is tied up in it.
+    # Zero-cost positions (subscription rights, allotments) are nominal and
+    # expected to sit unpriced until they are redeemed or expire.
+    cost = pos.groupby('instrument_id')['amount_local'].sum().abs()
+    unpriced = [i for i in held if i not in latest]
+
+    def label(i):
+        return inst.loc[i, 'symbol'] or inst.loc[i, 'isin']
+
+    def is_nominal(i):
+        return cost.get(i, 0.0) <= 0.005 or inst.loc[i, 'asset_class'] == 'Rights'
+
+    with_cost = [label(i) for i in unpriced if not is_nominal(i)]
+    nominal = [label(i) for i in unpriced if is_nominal(i)]
+    if with_cost:
         f.append(Finding('WARN', 'held_unpriced', "Current holdings with no stored price (carried at cost)",
-                         len(unpriced), unpriced))
+                         len(with_cost), with_cost))
+    if nominal:
+        f.append(Finding('INFO', 'nominal_positions',
+                         "Zero-cost positions without a price (rights / allotments awaiting redemption)",
+                         len(nominal), nominal))
     if latest:
         newest = max(latest.values())[:10]
         age = (date.today() - date.fromisoformat(newest)).days

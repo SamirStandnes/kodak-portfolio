@@ -1329,7 +1329,7 @@ VALUED_HOLDINGS_COLUMNS = [
     'price', 'price_date', 'prev_close', 'prev_date', 'fx_rate', 'has_price',
     'market_value_local', 'gain_local', 'return_pct',
     'day_change_pct', 'day_change_local', 'weight_pct',
-    'sector', 'region', 'country', 'asset_class',
+    'sector', 'region', 'country', 'asset_class', 'is_nominal',
 ]
 
 
@@ -1348,6 +1348,13 @@ def get_valued_holdings() -> pd.DataFrame:
     close. Those two dates are whatever the last two price refreshes were, not
     necessarily consecutive trading days, so callers should label the change
     with ``prev_date`` -> ``price_date`` rather than "today".
+
+    ``is_nominal`` marks positions that carry no value at all: no stored
+    price and zero cost basis, or an instrument classified as ``Rights``
+    without a price. Subscription rights allotted at zero and redeemed at
+    zero a few weeks later are the typical case. They are real ledger
+    positions (so they stay in the frame and in the audit), but pages should
+    keep them out of position counts, weights and the main tables.
     """
     holdings = get_holdings()
     if holdings.empty:
@@ -1423,6 +1430,7 @@ def get_valued_holdings() -> pd.DataFrame:
             'region': m.get('region') or 'Unknown',
             'country': m.get('country') or 'Unknown',
             'asset_class': m.get('asset_class') or 'Unknown',
+            'is_nominal': (not has_price) and (cost_basis <= 0.005 or m.get('asset_class') == 'Rights'),
         })
 
     df = pd.DataFrame(rows)

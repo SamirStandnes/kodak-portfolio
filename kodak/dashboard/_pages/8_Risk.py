@@ -15,6 +15,7 @@ from kodak.dashboard.common import (
 page_setup("Risk & Concentration", "⚠️", "How concentrated the portfolio is by position, currency, sector and country.")
 
 df_val = load_valued_holdings()
+df_val = df_val[~df_val['is_nominal']].reset_index(drop=True)   # rights etc. carry no value
 
 if df_val.empty:
     st.info("No holdings data available.")
@@ -36,7 +37,8 @@ col4.metric("Top 10 Concentration", format_pct(df.head(10)['Weight %'].sum(), 1)
 
 unpriced = int((~df_val['has_price']).sum())
 if unpriced:
-    st.caption(f"{unpriced} position(s) without a stored price are carried at cost basis.")
+    st.caption(f"{unpriced} position(s) without a stored price are carried at cost basis. "
+               "Nominal positions (rights with no price and no cost) are excluded.")
 
 st.divider()
 

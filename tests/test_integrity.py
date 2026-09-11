@@ -95,6 +95,18 @@ class TestAudit:
                 broker_id="2", balance=500.0, settle="USD")
         assert levels(audit.run_audit(), "reconciliation") == ["INFO"]
 
+    def test_zero_cost_unpriced_holding_is_info_not_warning(self, temp_db):
+        add_instrument(temp_db, 1, None, name="ACME RIGHTS", asset_class="Rights")
+        add_txn(temp_db, "2026-01-12", "TILDELING INNLEGG RE", 0.0, instrument_id=1, quantity=500)
+        findings = audit.run_audit()
+        assert "WARN" not in levels(findings, "held_unpriced")
+        assert levels(findings, "nominal_positions") == ["INFO"]
+
+    def test_costly_unpriced_holding_is_a_warning(self, temp_db):
+        add_instrument(temp_db, 1, "PRIVATE")
+        add_txn(temp_db, "2026-01-12", "BUY", -5000.0, instrument_id=1, quantity=10)
+        assert levels(audit.run_audit(), "held_unpriced") == ["WARN"]
+
     def test_missing_fx_for_held_currency_is_an_error(self, temp_db):
         add_instrument(temp_db, 1, "USD1", currency="USD")
         add_txn(temp_db, "2026-01-02", "BUY", -500.0, instrument_id=1, quantity=5, currency="USD", amount=-50.0)

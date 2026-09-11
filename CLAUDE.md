@@ -183,6 +183,13 @@ and convert at today's rate. Never use `SUM(amount_local)` as cash: it values ea
 movement at its own day's rate and leaves a phantom residue equal to the FX result
 on foreign cash (that was a 9 319 NOK error on Nordnet AF).
 
+**Nominal positions.** Subscription rights (`TILDELING INNLEGG RE`) arrive with no
+symbol, zero cost and no price, and are redeemed or expire at zero weeks later.
+`review_commit` tags their ISIN with `asset_class = Rights`; `get_valued_holdings()`
+flags any unpriced zero-cost (or Rights) position `is_nominal`. Pages exclude nominal
+rows from tables, counts and weights (they are listed in a caption / on System), and
+the audit reports them as INFO rather than "held without price".
+
 One-off tools: `link_broker_ids.py` stamps rows imported before these columns
 existed from the archived exports; `backfill_prices.py` fills price/FX history.
 

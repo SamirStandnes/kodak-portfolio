@@ -6,7 +6,7 @@ CNE1000003X6,2318.HK,HKD,Financial Services,Asia,China,Equity
 US46438F1012,IBIT,USD,Cryptocurrency,Global,Global,ETF
 NO0011202772,VAR.OL,NOK,Energy,Nordics,Norway,Equity
 ES0105046017,AENA.MC,EUR,Industrials,Europe,Spain,Equity
-NO0013642553,DESERT CONTROL AS TR,NOK,,Unknown,,Equity
+NO0013642553,,NOK,Basic Materials,Nordics,Norway,Rights
 US02079K3059,GOOGL,USD,Communication Services,Americas,United States,Equity
 NO0010161896,DNB.OL,NOK,Financial Services,Nordics,Norway,Equity
 US5949181045,MSFT,USD,Technology,Americas,United States,Equity
@@ -21,7 +21,7 @@ NO0010096985,EQNR.OL,NOK,Energy,Nordics,Norway,Equity
 US0231351067,AMZN,USD,Consumer Cyclical,Americas,United States,Equity
 NO0010847619,BULL ALIBABA X3 NORDNET N,NOK,Consumer Cyclical,Asia,Hong Kong,Certificate
 IE00BYZK4552,RBOT.L,USD,Technology,Global,Global,ETF
-NO0013062323,DESERT CONTROL AS T-RETT,NOK,,Unknown,,Equity
+NO0013062323,,NOK,Basic Materials,Nordics,Norway,Rights
 IE00BNNLSM87,0P0001M5YQ.IR,NOK,Technology,Global,Global,Fund
 IE00BMTD2S51,0P0001K6NB.IR,NOK,Broad Market,Emerging Markets,Multi-country,Fund
 IE00BMTD2X05,0P0001K6NN.IR,NOK,Broad Market,Americas,United States,Equity
@@ -69,4 +69,4 @@ SE0000117970,NCC-B.ST,SEK,Industrials,Europe,Sweden,Equity
 US5949728795,STRF,USD,,Americas,United States,Equity
 US00724F1012,ADBE,USD,Technology,Americas,United States,Equity
 US84615Q1031,SPCX,USD,Industrials,Americas,United States,Equity
-NO0013758177,,NOK,,,,
+NO0013758177,,NOK,Basic Materials,Nordics,Norway,Rights

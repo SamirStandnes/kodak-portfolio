@@ -90,7 +90,13 @@ def _append_placeholder_instruments(df, unknown_isins):
         existing_df = pd.read_csv(ISIN_MAP_PATH)
         existing_isins = set(existing_df['isin'].astype(str))
 
-        staged_instruments = df[df['isin'].isin(unknown_isins)][['isin', 'symbol', 'currency']].drop_duplicates('isin')
+        staged_instruments = df[df['isin'].isin(unknown_isins)][['isin', 'symbol', 'currency', 'type']].drop_duplicates('isin')
+
+        # Subscription rights (Nordnet "TILDELING INNLEGG RE") have no Yahoo
+        # symbol, are allotted at zero cost and expire or are redeemed at zero
+        # a few weeks later. Tag them so the dashboard treats them as nominal
+        # positions instead of asking for a ticker and a price.
+        rights_isins = set(df[df['type'] == 'TILDELING INNLEGG RE']['isin'].dropna().astype(str))
 
         new_rows = []
         needs_ticker = []
@@ -98,7 +104,10 @@ def _append_placeholder_instruments(df, unknown_isins):
             if str(row['isin']) in existing_isins:
                 continue
             raw = row['symbol']
-            if _looks_like_name(raw):
+            is_rights = str(row['isin']) in rights_isins
+            if is_rights:
+                ticker = ''
+            elif _looks_like_name(raw):
                 ticker = ''
                 needs_ticker.append((row['isin'], raw))
             else:
@@ -110,7 +119,7 @@ def _append_placeholder_instruments(df, unknown_isins):
                 'sector': '',
                 'region': '',
                 'country': '',
-                'asset_class': '',
+                'asset_class': 'Rights' if is_rights else '',
             })
 
         if new_rows:

@@ -11,7 +11,7 @@ import streamlit as st
 import pandas as pd
 from kodak.dashboard.common import (
     BASE_CURRENCY, CACHE_TTL, page_setup, display_table, text_col, number_col,
-    load_valued_holdings,
+    load_valued_holdings, format_local,
 )
 from kodak.shared.db import get_db_connection, query_df
 
@@ -84,8 +84,9 @@ def load_freshness():
 
 price_info, df_fx, staging_rows = load_freshness()
 df_val = load_valued_holdings()
-held = len(df_val)
-unpriced = df_val[~df_val['has_price']] if not df_val.empty else pd.DataFrame()
+held = int((~df_val['is_nominal']).sum()) if not df_val.empty else 0
+unpriced = df_val[~df_val['has_price'] & ~df_val['is_nominal']] if not df_val.empty else pd.DataFrame()
+nominal = df_val[df_val['is_nominal']] if not df_val.empty else pd.DataFrame()
 
 latest = price_info.get('latest')
 priced_on_latest = int((df_val['price_date'].astype(str) == str(latest)[:10]).sum()) if not df_val.empty else 0
@@ -115,7 +116,13 @@ if not unpriced.empty:
             f"Cost ({BASE_CURRENCY})": number_col(f"Cost ({BASE_CURRENCY})"),
         }, height=min(300, 40 * len(unpriced) + 60))
         st.caption("Usually a missing or wrong Yahoo symbol in `data/reference/isin_map.csv`, "
-                   "or an unlisted instrument (rights, private company).")
+                   "or an unlisted instrument (private company).")
+if not nominal.empty:
+    with st.expander(f"{len(nominal)} nominal position(s): rights or allotments with no price and no cost"):
+        for r in nominal.itertuples():
+            st.text(f"• {format_local(r.quantity, 0)} × {r.name or r.symbol}  ({r.symbol})")
+        st.caption("Allotted at zero and normally redeemed or expired at zero a few weeks later; "
+                   "the closing row arrives with the next broker export. Excluded from counts and weights.")
 
 if not df_fx.empty:
     st.caption(f"Exchange rates to {BASE_CURRENCY}")

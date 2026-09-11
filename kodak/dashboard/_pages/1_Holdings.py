@@ -37,8 +37,12 @@ def load_trades(instrument_id: int) -> pd.DataFrame:
     return df
 
 
-df_val = load_valued_holdings()
-latest_date, prev_date = price_freshness(df_val)
+df_all = load_valued_holdings()
+latest_date, prev_date = price_freshness(df_all)
+# Nominal positions (rights / allotments with no price and no cost) are real
+# ledger entries but carry no value; keep them out of the tables and counts.
+nominal = df_all[df_all['is_nominal']]
+df_val = df_all[~df_all['is_nominal']].reset_index(drop=True)
 
 total_val = float(df_val['market_value_local'].sum())
 change_value = float(df_val['day_change_local'].sum())
@@ -63,8 +67,12 @@ if not df_val.empty:
     col4.metric("Positions", len(df_val),
                 help=f"{unpriced} position(s) have no stored price and are carried at cost" if unpriced else None)
 
-if latest_date:
-    st.caption(f"Prices as of **{latest_date}**")
+note = f"Prices as of **{latest_date}**" if latest_date else ""
+if not nominal.empty:
+    items = ", ".join(f"{format_local(r.quantity, 0)} × {r.name or r.symbol}" for r in nominal.itertuples())
+    note += (" · " if note else "") + f"Nominal positions not shown (no price, no cost): {items}"
+if note:
+    st.caption(note)
 
 st.divider()
 

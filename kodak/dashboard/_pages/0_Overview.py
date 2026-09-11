@@ -24,6 +24,7 @@ def load_cash_and_income():
 
 
 df_val = load_valued_holdings()
+df_val = df_val[~df_val['is_nominal']].reset_index(drop=True)   # rights etc. carry no value
 cash, income = load_cash_and_income()
 history = load_portfolio_history()
 latest_date, prev_date = price_freshness(df_val)

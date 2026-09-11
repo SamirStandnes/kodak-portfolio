@@ -139,6 +139,24 @@ class TestValuedHoldings:
         assert df.loc["AAA", "market_value_local"] == pytest.approx(2000.0)
         assert df.loc["AAA", "weight_pct"] == pytest.approx(40.0)
 
+    def test_zero_cost_unpriced_position_is_nominal(self, temp_db):
+        """Subscription rights: allotted at zero, no symbol, no price."""
+        add_instrument(temp_db, 1, "AAA")
+        add_instrument(temp_db, 2, None, name="ACME RIGHTS", asset_class="Rights")
+        add_txn(temp_db, "2026-01-10", "BUY", -1000.0, instrument_id=1, quantity=10)
+        add_txn(temp_db, "2026-01-12", "TILDELING INNLEGG RE", 0.0, instrument_id=2, quantity=500)
+        add_price(temp_db, 1, "2026-02-05", 120.0)
+        df = calc.get_valued_holdings().set_index("symbol")
+        assert df.loc["ISIN2", "is_nominal"]
+        assert not df.loc["AAA", "is_nominal"]
+        assert df.loc["ISIN2", "market_value_local"] == 0.0
+
+    def test_unpriced_position_with_cost_is_not_nominal(self, temp_db):
+        add_instrument(temp_db, 1, "PRIVATE")
+        add_txn(temp_db, "2026-01-10", "BUY", -5000.0, instrument_id=1, quantity=10)
+        row = calc.get_valued_holdings().iloc[0]
+        assert not row["has_price"] and not row["is_nominal"]
+
     def test_sold_out_position_is_excluded(self, temp_db):
         add_instrument(temp_db, 1, "AAA")
         add_txn(temp_db, "2026-01-10", "BUY", -1000.0, instrument_id=1, quantity=10)
