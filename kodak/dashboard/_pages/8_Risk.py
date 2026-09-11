@@ -66,6 +66,7 @@ fig_conc.update_layout(
     yaxis=dict(autorange='reversed'), hovermode='closest',
     xaxis_title='Portfolio Weight (%)', yaxis_title='',
     height=max(400, 24 * len(df_conc) + 120),
+    coloraxis_showscale=False,
 )
 render_chart(fig_conc)
 

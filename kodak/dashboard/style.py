@@ -145,7 +145,7 @@ def page_header(title: str, icon: str = "", description: str = ""):
     )
     st.markdown(
         f"""
-        <div style="padding: 0 0 1.1rem 0; border-bottom: 1px solid {COLORS['border_light']}; margin-bottom: 1.4rem;">
+        <div class="kodak-page-header" style="padding: 0 0 1.1rem 0; border-bottom: 1px solid {COLORS['border_light']}; margin-bottom: 1.4rem;">
             <div style="display: flex; align-items: center;">
                 {icon_html}
                 <h1 style="margin: 0; font-size: 1.9rem; font-weight: 800;
@@ -382,5 +382,46 @@ h2, h3 {
 /* Hide default Streamlit chrome */
 #MainMenu, footer { visibility: hidden; }
 header [data-testid="stHeader"] { background: transparent; }
+
+/* ===== PHONE (≤ 640px) =====
+   Streamlit stacks every column to one per row on narrow screens, which turns
+   a row of metric cards into a long scroll. Lay metric rows out two per row,
+   shrink the cards and the header, and trim the side padding. */
+@media (max-width: 640px) {
+    .block-container {
+        padding-left: 0.9rem !important;
+        padding-right: 0.9rem !important;
+        padding-top: 3.25rem !important;   /* clear the collapsed-sidebar toggle bar */
+    }
+    /* metric rows: 2 per row (a row holding a chart/table keeps stacking) */
+    [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) {
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+        gap: 0.5rem !important;
+    }
+    [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > [data-testid="stColumn"] {
+        flex: 1 1 calc(50% - 0.5rem) !important;
+        width: calc(50% - 0.5rem) !important;
+        min-width: calc(50% - 0.5rem) !important;
+    }
+    [data-testid="stMetric"] {
+        min-height: 88px;
+        padding: 0.6rem 0.75rem;
+        border-radius: 10px;
+    }
+    [data-testid="stMetricLabel"] { font-size: 0.6rem !important; letter-spacing: 0.05em; }
+    [data-testid="stMetricLabel"] p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    [data-testid="stMetricValue"] { font-size: 1.25rem !important; }
+    [data-testid="stMetricDelta"] { font-size: 0.7rem !important; margin-top: 0.2rem; }
+    /* page header */
+    .kodak-page-header h1 { font-size: 1.45rem !important; }
+    .kodak-page-header p { font-size: 0.82rem !important; }
+    .kodak-page-header span { font-size: 1.2rem !important; }
+    [data-testid="stHeadingWithActionElements"] h3 { font-size: 1rem !important; }
+    hr { margin: 0.8rem 0 !important; }
+    /* tabs scroll sideways instead of wrapping */
+    .stTabs [data-baseweb="tab-list"] { overflow-x: auto; flex-wrap: nowrap; }
+    .stTabs [data-baseweb="tab"] { padding: 6px 10px; white-space: nowrap; }
+}
 </style>
 """

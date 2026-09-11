@@ -95,6 +95,7 @@ if not df_val.empty:
     fig.update_layout(
         yaxis=dict(autorange='reversed'), hovermode='closest',
         xaxis_title=f'Market Value ({BASE_CURRENCY})', yaxis_title='',
+        coloraxis_colorbar=dict(title='Return', thickness=8, len=0.6, ticksuffix=' %', outlinewidth=0),
     )
     render_chart(fig)
 

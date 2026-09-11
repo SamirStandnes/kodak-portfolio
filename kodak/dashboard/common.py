@@ -418,9 +418,14 @@ def date_col(label: str = "Date", fmt: str = "YYYY-MM-DD") -> st.column_config.D
 
 
 def render_chart(fig: go.Figure, **kwargs):
-    """Theme + render a Plotly figure full-width (Streamlit's own theme off)."""
+    """Theme + render a Plotly figure full-width (Streamlit's own theme off).
+
+    The modebar is hidden: on touch screens Plotly shows it permanently,
+    covering the top of every chart, and nobody exports PNGs from here.
+    """
     apply_plotly_theme(fig)
-    st.plotly_chart(fig, width="stretch", theme=None, **kwargs)
+    config = {"displayModeBar": False, "responsive": True, "scrollZoom": False}
+    st.plotly_chart(fig, width="stretch", theme=None, config=config, **kwargs)
 
 
 def apply_plotly_theme(fig: go.Figure) -> go.Figure:

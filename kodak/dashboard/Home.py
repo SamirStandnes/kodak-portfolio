@@ -17,7 +17,8 @@ check_auth()
 
 st.set_page_config(
     page_title="Kodak Portfolio", page_icon="📈",
-    layout="wide", initial_sidebar_state="expanded",
+    # "auto": open on desktop, collapsed behind the hamburger on phones
+    layout="wide", initial_sidebar_state="auto",
 )
 
 # resolve() is required: when launched via a relative path (CLI, cloud),
