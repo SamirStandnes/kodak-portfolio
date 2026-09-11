@@ -54,7 +54,10 @@ k1.metric("All-Time XIRR (Annualized)", format_pct(total_xirr, 2),
 if not df_years.empty:
     total_profit = df_years['profit'].sum()
     k2.metric("Cumulative Profit", format_local(total_profit),
-              help="Sum of yearly profit (end value − start value − net deposits).")
+              help="Current value minus all net deposits, i.e. everything the portfolio has earned "
+                   "(price gains, dividends, interest, fees, tax). Valued at live Yahoo prices; the "
+                   "Overview's 'Total Gain vs Deposits' uses the last stored prices, so the two differ "
+                   "by the market move since the last price refresh.")
     best = df_years.loc[df_years['return_pct'].idxmax()]
     k3.metric("Best Year", f"{best['year']}: {format_pct(best['return_pct'], 1, sign=True)}")
 st.divider()
@@ -74,13 +77,16 @@ if not df_years.empty:
         hovertemplate="%{y:+.2f}%<extra>XIRR</extra>",
     ))
     fig.update_layout(
-        title='Yearly Equity & Returns',
         yaxis=dict(side='left', showgrid=False, title=f'Equity ({BASE_CURRENCY})'),
         yaxis2=dict(side='right', overlaying='y', showgrid=True, title='Return (%)',
-                    zeroline=True, zerolinecolor=COLORS['border']),
-        legend=dict(x=0.01, y=0.99),
-        xaxis_title='', xaxis=dict(type='category'),
+                    zeroline=True, zerolinecolor=COLORS['border'],
+                    tickfont=dict(color=COLORS['text_secondary'], family="'JetBrains Mono', monospace"),
+                    title_font=dict(color=COLORS['text_secondary'])),
+        legend=dict(orientation='h', y=1.08, x=0),
+        xaxis_title='', xaxis=dict(type='category'), hovermode='x unified',
+        margin=dict(l=40, r=40, t=40, b=40),
     )
+    st.subheader("Yearly Equity & Returns")
     render_chart(fig)
 
     st.subheader("Yearly Summary")
@@ -161,17 +167,21 @@ if selected_year:
         df_tree = df_contrib[abs(df_contrib['Contribution %']) > 0.05].copy()
 
         if not df_tree.empty:
+            st.markdown(f"**Performance contribution, {selected_year}** — box size is the share of the "
+                        "year's return each holding explains; colour is its sign.")
             fig_tree = px.treemap(
                 df_tree, path=['Symbol'],
                 values=abs(df_tree['Contribution %']),
                 color='Contribution %',
                 color_continuous_scale=[COLORS['negative'], COLORS['bg_surface'], COLORS['positive']],
                 color_continuous_midpoint=0,
-                title=f"Performance Contribution ({selected_year})",
             )
             fig_tree.update_traces(
+                marker=dict(line=dict(color=COLORS['bg'], width=2)),
+                textfont=dict(family="'Inter', sans-serif", size=14),
                 hovertemplate="<b>%{label}</b><br>Contribution: %{color:+.2f} pp<extra></extra>")
-            fig_tree.update_layout(hovermode='closest')
+            fig_tree.update_layout(hovermode='closest', margin=dict(l=10, r=10, t=10, b=10),
+                                   coloraxis_colorbar=dict(title='pp'))
             render_chart(fig_tree)
 
         display_table(df_contrib, {

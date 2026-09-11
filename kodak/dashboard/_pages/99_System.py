@@ -40,8 +40,16 @@ def load_freshness():
             "SELECT from_currency, MAX(date) as latest, COUNT(*) as rows_ FROM exchange_rates "
             "WHERE to_currency = ? GROUP BY from_currency ORDER BY from_currency",
             conn, params=(BASE_CURRENCY,))
-        staging = query_df("SELECT COUNT(*) as n FROM transactions_staging", conn).iloc[0]['n']
-    return prices.iloc[0].to_dict(), fx, int(staging)
+    # transactions_staging only exists locally (the cloud migration copies the
+    # five permanent tables), so treat a missing table as "not applicable".
+    staging = None
+    if not IS_CLOUD:
+        try:
+            with get_db_connection() as conn:
+                staging = int(query_df("SELECT COUNT(*) as n FROM transactions_staging", conn).iloc[0]['n'])
+        except Exception:
+            staging = None
+    return prices.iloc[0].to_dict(), fx, staging
 
 
 price_info, df_fx, staging_rows = load_freshness()
@@ -60,8 +68,8 @@ m1.metric("Latest Price Date", str(latest)[:10] if latest else "—",
 m2.metric("Priced on Latest Date", f"{priced_on_latest} / {held}",
           help="Held instruments that have a close stored for the latest price date")
 m3.metric("Held Without Any Price", len(unpriced))
-m4.metric("Staged (uncommitted)", staging_rows,
-          help="Rows waiting in transactions_staging for review")
+m4.metric("Staged (uncommitted)", "n/a" if staging_rows is None else staging_rows,
+          help="Rows waiting in transactions_staging for review (local database only)")
 
 if age_days is not None and age_days > 3:
     st.warning(

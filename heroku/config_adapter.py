@@ -42,6 +42,7 @@ def load_config() -> Dict[str, Any]:
             'TRANSFER_IN',
             'TRANSFER_OUT',
             'OVERFØRING VIA TRUSTLY',
+            'INNSKUDD KONTANTER',
         ]
     }
 

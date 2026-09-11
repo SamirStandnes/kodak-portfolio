@@ -38,3 +38,4 @@ transaction_types:
     - TRANSFER_IN
     - TRANSFER_OUT
     - OVERFØRING VIA TRUSTLY    # Nordnet: Trustly transfer
+    - INNSKUDD KONTANTER        # Nordnet: cash credited back (e.g. reversal of a failed withdrawal)
