@@ -11,7 +11,7 @@ from kodak.dashboard.common import (
 )
 from kodak.shared.calculations import get_fx_performance_detailed
 
-page_setup("Currency Performance", "💱")
+page_setup("Currency Performance", "💱", "How exchange-rate moves have helped or hurt, on cash and on foreign holdings.")
 
 
 @st.cache_data(ttl=CACHE_TTL)

@@ -12,7 +12,7 @@ from kodak.dashboard.common import (
     display_table, number_col, render_chart, load_valued_holdings,
 )
 
-page_setup("Risk & Concentration", "⚠️")
+page_setup("Risk & Concentration", "⚠️", "How concentrated the portfolio is by position, currency, sector and country.")
 
 df_val = load_valued_holdings()
 
@@ -86,8 +86,11 @@ def exposure_section(title: str, column: str, chart_title: str):
         fig = px.pie(grouped, values='Market Value', names=column,
                      color_discrete_sequence=palette, hole=0.4, title=chart_title)
         fig.update_traces(
-            hovertemplate=f"<b>%{{label}}</b><br>%{{value:,.0f}} {BASE_CURRENCY}<br>%{{percent}}<extra></extra>")
-        fig.update_layout(hovermode='closest')
+            textposition='inside', texttemplate='%{percent:.1%}',
+            marker=dict(line=dict(color=COLORS['bg'], width=2)),
+            hovertemplate=f"<b>%{{label}}</b><br>%{{value:,.0f}} {BASE_CURRENCY}<br>%{{percent:.1%}}<extra></extra>")
+        fig.update_layout(hovermode='closest', uniformtext_minsize=11, uniformtext_mode='hide',
+                          legend=dict(orientation='v', x=1.02, y=0.5), margin=dict(l=10, r=10, t=48, b=10))
         render_chart(fig)
     with c2:
         display_table(grouped, {

@@ -69,24 +69,26 @@ def get_plotly_layout(**overrides) -> dict:
             size=12,
         ),
         xaxis=dict(
-            gridcolor=COLORS["border_light"],
+            gridcolor="rgba(48,54,61,0.45)",
             linecolor=COLORS["border"],
             zerolinecolor=COLORS["border"],
-            title_font=dict(color=COLORS["text_secondary"]),
-            tickfont=dict(color=COLORS["text_secondary"], family="'JetBrains Mono', monospace"),
+            automargin=True,
+            title_font=dict(color=COLORS["text_secondary"], size=11),
+            tickfont=dict(color=COLORS["text_secondary"], size=11, family="'JetBrains Mono', monospace"),
         ),
         yaxis=dict(
-            gridcolor=COLORS["border_light"],
+            gridcolor="rgba(48,54,61,0.45)",
             linecolor=COLORS["border"],
             zerolinecolor=COLORS["border"],
-            title_font=dict(color=COLORS["text_secondary"]),
-            tickfont=dict(color=COLORS["text_secondary"], family="'JetBrains Mono', monospace"),
+            automargin=True,
+            title_font=dict(color=COLORS["text_secondary"], size=11),
+            tickfont=dict(color=COLORS["text_secondary"], size=11, family="'JetBrains Mono', monospace"),
         ),
         legend=dict(
             bgcolor="rgba(0,0,0,0)",
             font=dict(color=COLORS["text_secondary"], size=11),
         ),
-        margin=dict(l=40, r=40, t=60, b=40),
+        margin=dict(l=48, r=24, t=48, b=40),
         hoverlabel=dict(
             bgcolor=COLORS["bg_surface"],
             font_size=13,
@@ -122,7 +124,7 @@ def apply_theme():
                            background-clip: text; letter-spacing: 0.18em;">KODAK</h2>
                 <p style="color: #8B949E; font-size: 0.65rem; margin: 2px 0 0 0;
                           letter-spacing: 0.2em; text-transform: uppercase;
-                          font-family: 'JetBrains Mono', monospace;">Portfolio · v2</p>
+                          font-family: 'JetBrains Mono', monospace;">Portfolio · v3</p>
             </div>
             """,
             unsafe_allow_html=True,
@@ -130,21 +132,28 @@ def apply_theme():
         st.markdown("<hr style='margin: 0.5rem 0 !important;'>", unsafe_allow_html=True)
 
 
-def page_header(title: str, description: str = ""):
-    """Render a gradient page header (replaces st.title for hero pages)."""
+def page_header(title: str, icon: str = "", description: str = ""):
+    """Gradient page title with a plain (un-clipped) icon and optional subtitle."""
+    icon_html = (
+        f'<span style="font-size: 1.6rem; line-height: 1; margin-right: 0.6rem;">{icon}</span>'
+        if icon else ''
+    )
     desc_html = (
-        f'<p style="color: #8B949E; margin: 0.5rem 0 0 0; font-size: 1rem; '
-        f'font-family: \'Inter\', sans-serif;">{description}</p>'
+        f'<p style="color: {COLORS["text_secondary"]}; margin: 0.35rem 0 0 0; font-size: 0.95rem; '
+        f'font-family: Inter, sans-serif;">{description}</p>'
         if description else ''
     )
     st.markdown(
         f"""
-        <div style="padding: 0 0 1.5rem 0;">
-            <h1 style="margin: 0; font-size: 2.4rem; font-weight: 800;
-                       font-family: 'Inter', sans-serif; letter-spacing: -0.02em;
-                       background: linear-gradient(135deg, #667EEA 0%, #764BA2 100%);
-                       -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-                       background-clip: text;">{title}</h1>
+        <div style="padding: 0 0 1.1rem 0; border-bottom: 1px solid {COLORS['border_light']}; margin-bottom: 1.4rem;">
+            <div style="display: flex; align-items: center;">
+                {icon_html}
+                <h1 style="margin: 0; font-size: 1.9rem; font-weight: 800;
+                           font-family: 'Inter', sans-serif; letter-spacing: -0.02em;
+                           background: linear-gradient(135deg, #7F8FF0 0%, #A57BD6 100%);
+                           -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+                           background-clip: text;">{title}</h1>
+            </div>
             {desc_html}
         </div>
         """,
@@ -198,8 +207,8 @@ html, body, [class*="css"], .stApp, .block-container {
     to   { opacity: 1; transform: translateY(0); }
 }
 .block-container {
-    padding-top: 2rem;
-    padding-bottom: 2rem;
+    padding-top: 1.5rem;
+    padding-bottom: 3rem;
     animation: fadeIn 0.35s ease-out;
     max-width: 1400px;
 }
@@ -209,7 +218,9 @@ html, body, [class*="css"], .stApp, .block-container {
     background: linear-gradient(135deg, #161B22 0%, #1C2333 100%);
     border: 1px solid #30363D;
     border-radius: 12px;
-    padding: 1rem 1.25rem;
+    padding: 0.9rem 1.15rem;
+    min-height: 118px;              /* cards with and without a delta line up */
+    box-sizing: border-box;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
     transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
@@ -227,14 +238,16 @@ html, body, [class*="css"], .stApp, .block-container {
     font-family: 'Inter', sans-serif !important;
 }
 [data-testid="stMetricValue"] {
-    font-size: 1.85rem !important;
+    font-size: 1.7rem !important;
     font-weight: 700 !important;
     color: #E6EDF3 !important;
     letter-spacing: -0.02em;
+    line-height: 1.15;
 }
 [data-testid="stMetricDelta"] {
-    font-size: 0.85rem !important;
-    font-weight: 500 !important;
+    font-size: 0.8rem !important;
+    font-weight: 600 !important;
+    margin-top: 0.35rem;
 }
 
 /* ===== SIDEBAR ===== */
@@ -244,14 +257,17 @@ html, body, [class*="css"], .stApp, .block-container {
 }
 [data-testid="stSidebarNavLink"] {
     border-radius: 8px !important;
-    margin: 2px 8px;
+    margin: 1px 8px;
+    padding-top: 0.35rem !important;
+    padding-bottom: 0.35rem !important;
     transition: background 0.15s ease;
 }
+[data-testid="stSidebarNavLink"] span { font-size: 0.9rem; }
 
 /* ===== DIVIDERS ===== */
 hr {
     border-color: #21262D !important;
-    margin: 1.75rem 0 !important;
+    margin: 1.25rem 0 !important;
 }
 
 /* ===== DATAFRAMES ===== */
@@ -282,6 +298,35 @@ h2, h3 {
     color: #E6EDF3 !important;
     font-weight: 600 !important;
     letter-spacing: -0.015em;
+}
+[data-testid="stHeadingWithActionElements"] h3 {
+    font-size: 1.15rem !important;
+    padding-bottom: 0.25rem;
+}
+
+/* ===== INPUTS ===== */
+[data-testid="stSelectbox"] > div > div,
+[data-testid="stMultiSelect"] > div > div,
+[data-testid="stTextInput"] > div > div,
+[data-testid="stDateInput"] > div > div {
+    border-radius: 8px !important;
+    border-color: #30363D !important;
+    background: #161B22 !important;
+}
+[data-testid="stWidgetLabel"] p {
+    font-size: 0.72rem !important;
+    color: #8B949E !important;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+}
+[data-testid="stCaptionContainer"] p { color: #8B949E; font-size: 0.82rem; }
+
+/* ===== BORDERED CONTAINERS ===== */
+[data-testid="stVerticalBlockBorderWrapper"] > div[style*="border"] {
+    border-radius: 12px !important;
+    border-color: #21262D !important;
+    background: #0E131A;
 }
 
 /* ===== TABS ===== */

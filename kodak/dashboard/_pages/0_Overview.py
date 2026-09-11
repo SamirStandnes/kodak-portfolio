@@ -15,7 +15,7 @@ from kodak.dashboard.common import (
 )
 from kodak.shared.calculations import get_income_and_costs, get_total_cash_local
 
-page_setup("Portfolio Overview", "📈")
+page_setup("Portfolio Overview", "📈", "Net worth, value over time, allocation and what moved since the last price refresh.")
 
 
 @st.cache_data(ttl=CACHE_TTL)
@@ -131,9 +131,9 @@ if not movers.empty and prev_date:
     st.subheader(f"Movers since {prev_date}")
     mcol1, mcol2 = st.columns(2)
     mover_cols = {
-        "Symbol":   {"width": 110},
-        "Change %": {"type": "percent", "decimals": 2, "color_signed": True, "width": 110},
-        f"Change ({BASE_CURRENCY})": {"type": "currency", "decimals": 0, "color_signed": True, "width": 140},
+        "Symbol":   {"width": 120},
+        "Change %": {"type": "percent", "decimals": 2, "color_signed": True, "width": 120},
+        f"Change ({BASE_CURRENCY})": {"label": f"Change ({BASE_CURRENCY})", "type": "currency", "decimals": 0, "color_signed": True, "width": 150},
     }
 
     def mover_frame(frame):
@@ -166,10 +166,12 @@ if not df_val.empty and market_value > 0:
         fig = px.pie(df_alloc, values='Market Value', names=col, title=title,
                      color_discrete_sequence=palette, hole=0.4)
         fig.update_traces(
-            textposition='inside', textinfo='percent+label',
-            hovertemplate=f"<b>%{{label}}</b><br>%{{value:,.0f}} {BASE_CURRENCY}<br>%{{percent}}<extra></extra>",
+            textposition='inside', texttemplate='%{label}<br>%{percent:.1%}',
+            marker=dict(line=dict(color=COLORS['bg'], width=2)),
+            hovertemplate=f"<b>%{{label}}</b><br>%{{value:,.0f}} {BASE_CURRENCY}<br>%{{percent:.1%}}<extra></extra>",
         )
-        fig.update_layout(hovermode='closest')
+        fig.update_layout(hovermode='closest', uniformtext_minsize=11, uniformtext_mode='hide',
+                          margin=dict(l=10, r=10, t=48, b=10))
         return fig
 
     tabs = st.tabs(["Sector", "Region", "Currency", "Asset Class", "Country"])

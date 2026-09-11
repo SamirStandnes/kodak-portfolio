@@ -16,7 +16,7 @@ from kodak.shared.calculations import (
     get_yearly_equity_curve, get_yearly_contribution, get_total_xirr, get_realized_performance,
 )
 
-page_setup("Performance", "📊")
+page_setup("Performance", "📊", "Money-weighted returns by year, realized results, and what drove each year.")
 
 
 @st.cache_data(ttl=CACHE_TTL)

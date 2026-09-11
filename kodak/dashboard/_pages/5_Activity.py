@@ -7,12 +7,11 @@ if root_path not in sys.path:
 import streamlit as st
 import pandas as pd
 from kodak.dashboard.common import (
-    BASE_CURRENCY, CACHE_TTL, page_setup, format_local,
-    display_table, number_col, text_col, date_col,
+    BASE_CURRENCY, CACHE_TTL, page_setup, format_local, display_aggrid,
 )
 from kodak.shared.db import get_db_connection, query_df
 
-page_setup("Portfolio Activity", "📝")
+page_setup("Portfolio Activity", "📝", "The complete transaction ledger, filterable and exportable.")
 
 
 @st.cache_data(ttl=CACHE_TTL)
@@ -91,18 +90,20 @@ st.download_button(
     file_name="kodak_transactions.csv", mime="text/csv",
 )
 
-display_table(df, {
-    "date": date_col(),
-    "account": text_col("Account"),
-    "type": text_col("Type"),
-    "symbol": text_col("Instrument"),
-    "quantity": number_col("Qty", fmt="%.4f"),
-    "price": number_col("Price", fmt="%.2f"),
-    "amount": number_col("Amount", fmt="%.2f"),
-    "currency": text_col("Curr"),
-    "amount_local": number_col(f"Amount ({BASE_CURRENCY})"),
-    "fee_local": number_col(f"Fee ({BASE_CURRENCY})", fmt="%.2f"),
-    "batch_id": text_col("Batch ID"),
-    "source_file": text_col("Source"),
-    "description": text_col("Notes"),
-})
+order = ["date", "account", "type", "symbol", "quantity", "price", "amount", "currency",
+         "amount_local", "fee_local", "description", "batch_id", "source_file"]
+display_aggrid(df[order], columns={
+    "date":         {"label": "Date", "width": 100},
+    "account":      {"label": "Account", "width": 120},
+    "type":         {"label": "Type", "width": 150},
+    "symbol":       {"label": "Instrument", "width": 105},
+    "quantity":     {"label": "Qty", "type": "quantity", "decimals": 4, "width": 80},
+    "price":        {"label": "Price", "type": "number", "decimals": 2, "width": 90},
+    "amount":       {"label": "Amount", "type": "number", "decimals": 2, "width": 105},
+    "currency":     {"label": "Ccy", "width": 60},
+    "amount_local": {"label": f"Amount ({BASE_CURRENCY})", "type": "currency", "decimals": 0, "color_signed": True, "width": 115},
+    "fee_local":    {"label": "Fee", "type": "number", "decimals": 2, "width": 80},
+    "description":  {"label": "Notes", "width": 220},
+    "batch_id":     {"label": "Batch", "width": 130},
+    "source_file":  {"label": "Source", "width": 160},
+}, pin_left=["date"], height=min(640, 34 * len(df) + 36 + 4))

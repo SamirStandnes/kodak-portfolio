@@ -12,7 +12,7 @@ from kodak.dashboard.common import (
 )
 from kodak.shared.calculations import get_interest_details
 
-page_setup("Interest Analysis", "💳")
+page_setup("Interest Analysis", "💳", "Interest charged on margin and credit balances, net of any interest received.")
 
 
 @st.cache_data(ttl=CACHE_TTL)

@@ -12,7 +12,7 @@ from kodak.dashboard.common import (
 )
 from kodak.shared.calculations import get_fee_details, get_fee_analysis, get_platform_fees
 
-page_setup("Fee Analysis", "💸")
+page_setup("Fee Analysis", "💸", "Trading commissions and platform fees, and which broker is cheapest per NOK traded.")
 
 
 @st.cache_data(ttl=CACHE_TTL)

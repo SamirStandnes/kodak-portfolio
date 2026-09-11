@@ -143,12 +143,12 @@ def check_auth():
     st.stop()
 
 
-def page_setup(title: str, icon: str):
+def page_setup(title: str, icon: str, description: str = ""):
     """Per-page setup: apply theme + render header. Auth and set_page_config
     are handled by the entry-point router (Home.py)."""
     from kodak.dashboard.style import apply_theme, page_header
     apply_theme()
-    page_header(f"{icon} {title}")
+    page_header(title, icon=icon, description=description)
 
 
 def _translate_column_config(column_config: dict) -> dict:
@@ -167,6 +167,10 @@ def _translate_column_config(column_config: dict) -> dict:
         ctype = tc.get("type")
         fmt = tc.get("format")
         out = {}
+        if cfg.get("label"):
+            out["label"] = cfg["label"]
+        if cfg.get("help"):
+            out["help"] = cfg["help"]
 
         if ctype == "number":
             decimals = 0
@@ -189,16 +193,20 @@ def _translate_column_config(column_config: dict) -> dict:
         elif ctype == "progress":
             out["type"] = "progress"
             out["max"] = tc.get("max_value", 100) or 100
-        # text and date fall through with no spec (rendered as plain text)
+        elif ctype == "date":
+            out["width"] = 110
+        # text falls through with only its label
 
         if out:
             spec[col] = out
     return spec
 
 
-def display_table(df, column_config: dict, height: int = TABLE_HEIGHT):
+def display_table(df, column_config: dict, height: int = TABLE_HEIGHT, totals: dict | None = None,
+                  pin_left: list[str] | None = None):
     """Render df via AG-Grid by translating Streamlit column_config to AG-Grid specs."""
-    return display_aggrid(df, columns=_translate_column_config(column_config), height=height)
+    return display_aggrid(df, columns=_translate_column_config(column_config), height=height,
+                          totals=totals, pin_left=pin_left)
 
 
 def display_table_native(df, column_config: dict, height: int = TABLE_HEIGHT):
@@ -213,39 +221,75 @@ def display_table_native(df, column_config: dict, height: int = TABLE_HEIGHT):
 
 
 def _kodak_aggrid_theme():
-    """Build the Kodak dark theme using streamlit-aggrid v1.2+ Theming API."""
+    """Kodak dark theme via the streamlit-aggrid v1.2+ (AG Grid v33) Theming API."""
     from st_aggrid import StAggridTheme
     return (
         StAggridTheme(base="balham")
         .withParams(
-            backgroundColor="#0B0E13",
-            foregroundColor="#E6EDF3",
-            chromeBackgroundColor="#1C2333",
-            headerBackgroundColor="#1C2333",
-            headerTextColor="#8B949E",
-            borderColor="#21262D",
+            backgroundColor=COLORS["bg"],
+            foregroundColor=COLORS["text"],
+            chromeBackgroundColor=COLORS["bg_card"],
+            headerBackgroundColor=COLORS["bg_card"],
+            headerTextColor=COLORS["text_secondary"],
+            headerFontSize=11,
+            headerFontWeight=600,
+            borderColor=COLORS["border_light"],
+            rowBorder={"style": "solid", "width": 1, "color": COLORS["border_light"]},
+            columnBorder=False,
             oddRowBackgroundColor="#0E131A",
-            rowHoverColor="#1C2333",
-            selectedRowBackgroundColor="#1C2333",
-            accentColor="#667EEA",
+            rowHoverColor=COLORS["bg_surface"],
+            selectedRowBackgroundColor=COLORS["bg_surface"],
+            accentColor=COLORS["primary"],
             fontFamily="Inter, -apple-system, sans-serif",
             fontSize=13,
-            rowHeight=38,
-            headerHeight=38,
+            rowHeight=34,
+            headerHeight=36,
+            cellHorizontalPadding=12,
             wrapperBorderRadius=10,
+            wrapperBorder={"style": "solid", "width": 1, "color": COLORS["border"]},
         )
     )
 
 
-def display_aggrid(df, columns: dict | None = None, height: int = TABLE_HEIGHT, pin_left: list[str] | None = None):
-    """Render a DataFrame as an AG-Grid table with the dark Kodak theme.
+_MONO = "'JetBrains Mono', 'SF Mono', Menlo, monospace"
 
-    `columns` maps column-name → spec dict:
-        {"type": "currency"|"percent"|"number"|"quantity"|"text"|"progress",
+# CSS injected into the grid iframe (global page CSS can't reach it).
+_AGGRID_CSS = {
+    "::-webkit-scrollbar": {"width": "8px !important", "height": "8px !important"},
+    "::-webkit-scrollbar-track": {"background": COLORS["bg"] + " !important"},
+    "::-webkit-scrollbar-thumb": {"background": COLORS["border"] + " !important", "border-radius": "4px !important"},
+    "::-webkit-scrollbar-thumb:hover": {"background": "#484F58 !important"},
+    ".ag-body-horizontal-scroll-viewport, .ag-body-vertical-scroll-viewport": {
+        "scrollbar-width": "thin", "scrollbar-color": COLORS["border"] + " " + COLORS["bg"],
+    },
+    ".ag-header-cell-text": {
+        "text-transform": "uppercase", "letter-spacing": "0.06em", "font-size": "11px",
+        "font-weight": "600", "white-space": "normal", "line-height": "1.2",
+    },
+    ".ag-header-cell": {"border-bottom": "1px solid " + COLORS["border"] + " !important"},
+    ".ag-right-aligned-header .ag-header-cell-label": {"flex-direction": "row-reverse"},
+    ".ag-row-pinned": {
+        "background": COLORS["bg_card"] + " !important", "font-weight": "600",
+        "border-top": "2px solid " + COLORS["border"] + " !important",
+    },
+    ".ag-cell": {"overflow": "hidden", "text-overflow": "ellipsis", "white-space": "nowrap"},
+    ".ag-cell-focus": {"border-color": "transparent !important"},
+}
+
+
+def display_aggrid(df, columns: dict | None = None, height: int = TABLE_HEIGHT,
+                   pin_left: list[str] | None = None, totals: dict | None = None):
+    """Render a DataFrame as an AG-Grid table with the Kodak theme.
+
+    `columns` maps column-name -> spec dict:
+        {"label": str            display header (defaults to the column name),
+         "help": str             header tooltip,
+         "type": "currency"|"percent"|"number"|"quantity"|"text"|"progress",
          "decimals": int,
-         "color_signed": bool (green if >0, red if <0),
-         "max": float (only for type="progress"),
-         "width": int}
+         "color_signed": bool    green if >0, red if <0,
+         "max": float            only for type="progress",
+         "width": int            minimum width; columns then stretch to fill the grid}
+    `totals` maps column-name -> value for a pinned bottom row (e.g. sums).
     """
     from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
@@ -255,71 +299,58 @@ def display_aggrid(df, columns: dict | None = None, height: int = TABLE_HEIGHT, 
 
     gb.configure_default_column(
         resizable=True, sortable=True, filter=True, floatingFilter=False,
+        suppressHeaderFilterButton=True, minWidth=80,
+        cellStyle={"fontFamily": "Inter, -apple-system, sans-serif"},
     )
 
+    guard = ("  if (params.value === null || params.value === undefined || isNaN(params.value)) return '';")
+
     def num_formatter(decimals: int) -> JsCode:
-        return JsCode(
-            "function(params){"
-            "  if (params.value === null || params.value === undefined || isNaN(params.value)) return '';"
-            f"  return Number(params.value).toLocaleString('nb-NO', {{minimumFractionDigits:{decimals}, maximumFractionDigits:{decimals}}});"
-            "}"
-        )
+        return JsCode("function(params){" + guard +
+                      "  return Number(params.value).toLocaleString('nb-NO', {minimumFractionDigits:%d, maximumFractionDigits:%d});}" % (decimals, decimals))
 
     def pct_formatter(decimals: int) -> JsCode:
-        return JsCode(
-            "function(params){"
-            "  if (params.value === null || params.value === undefined || isNaN(params.value)) return '';"
-            f"  return Number(params.value).toLocaleString('nb-NO', {{minimumFractionDigits:{decimals}, maximumFractionDigits:{decimals}}}) + ' %';"
-            "}"
-        )
-
-    progress_value_formatter = pct_formatter
+        return JsCode("function(params){" + guard +
+                      "  return Number(params.value).toLocaleString('nb-NO', {minimumFractionDigits:%d, maximumFractionDigits:%d}) + ' %%';}" % (decimals, decimals))
 
     def qty_formatter(max_decimals: int) -> JsCode:
-        # Share counts: whole numbers stay whole, fractional fund units keep
-        # their decimals instead of being rounded away.
-        return JsCode(
-            "function(params){"
-            "  if (params.value === null || params.value === undefined || isNaN(params.value)) return '';"
-            f"  return Number(params.value).toLocaleString('nb-NO', {{minimumFractionDigits:0, maximumFractionDigits:{max_decimals}}});"
-            "}"
-        )
+        return JsCode("function(params){" + guard +
+                      "  return Number(params.value).toLocaleString('nb-NO', {minimumFractionDigits:0, maximumFractionDigits:%d});}" % max_decimals)
 
     def progress_cell_style(max_val: float) -> JsCode:
         return JsCode(
             "function(params){"
             "  const v = Number(params.value) || 0;"
-            f"  const max = {max_val};"
-            "  const pct = Math.max(0, Math.min(100, (v / max) * 100));"
+            "  const pct = Math.max(0, Math.min(100, (v / %s) * 100));" % max_val +
             "  return {"
             "    background: 'linear-gradient(to right, rgba(102,126,234,0.45) 0%, rgba(118,75,162,0.45) ' + pct + '%, transparent ' + pct + '%)',"
-            "    color: '#E6EDF3',"
-            "    fontFamily: 'JetBrains Mono, monospace',"
-            "    fontSize: '13px',"
-            "    paddingLeft: '8px',"
-            "    display: 'flex',"
-            "    alignItems: 'center',"
+            "    color: '" + COLORS["text"] + "', fontFamily: \"" + _MONO + "\", fontSize: '12.5px',"
             "  };"
             "}"
         )
 
     signed_color = JsCode(
         "function(params){"
+        "  const base = {fontFamily: \"" + _MONO + "\", fontSize: '12.5px'};"
         "  const v = Number(params.value);"
-        "  if (isNaN(v)) return {fontFamily:'JetBrains Mono, monospace'};"
-        "  if (v > 0) return {color:'#3FB950', fontFamily:'JetBrains Mono, monospace', fontWeight:'600'};"
-        "  if (v < 0) return {color:'#F85149', fontFamily:'JetBrains Mono, monospace', fontWeight:'600'};"
-        "  return {color:'#8B949E', fontFamily:'JetBrains Mono, monospace'};"
+        "  if (isNaN(v) || params.node.rowPinned) return base;"
+        "  if (v > 0) return Object.assign(base, {color: '" + COLORS["positive"] + "', fontWeight: '600'});"
+        "  if (v < 0) return Object.assign(base, {color: '" + COLORS["negative"] + "', fontWeight: '600'});"
+        "  return Object.assign(base, {color: '" + COLORS["text_secondary"] + "'});"
         "}"
     )
-    mono_style = {"fontFamily": "JetBrains Mono, monospace"}
+    mono_style = {"fontFamily": _MONO, "fontSize": "12.5px"}
 
     for col, spec in columns.items():
         if col not in df.columns:
             continue
-        kwargs = {}
-        if "width" in spec:
-            kwargs["width"] = spec["width"]
+        kwargs = {"headerName": spec.get("label", col), "minWidth": spec.get("width", 80)}
+        if spec.get("help"):
+            kwargs["headerTooltip"] = spec["help"]
+        if spec.get("tooltip_field") and spec["tooltip_field"] in df.columns:
+            kwargs["tooltipField"] = spec["tooltip_field"]
+        if spec.get("hide"):
+            kwargs["hide"] = True
         if col in pin_left:
             kwargs["pinned"] = "left"
 
@@ -328,24 +359,19 @@ def display_aggrid(df, columns: dict | None = None, height: int = TABLE_HEIGHT, 
         color_signed = spec.get("color_signed", False)
 
         if ctype in ("currency", "number"):
-            kwargs["valueFormatter"] = num_formatter(decimals)
-            kwargs["type"] = "rightAligned"
-            kwargs["cellStyle"] = signed_color if color_signed else mono_style
+            kwargs.update(valueFormatter=num_formatter(decimals), type="rightAligned",
+                          cellStyle=signed_color if color_signed else mono_style)
         elif ctype == "quantity":
-            kwargs["valueFormatter"] = qty_formatter(spec.get("decimals", 4))
-            kwargs["type"] = "rightAligned"
-            kwargs["cellStyle"] = mono_style
+            kwargs.update(valueFormatter=qty_formatter(spec.get("decimals", 4)), type="rightAligned",
+                          cellStyle=mono_style)
         elif ctype == "percent":
-            kwargs["valueFormatter"] = pct_formatter(decimals)
-            kwargs["type"] = "rightAligned"
-            kwargs["cellStyle"] = signed_color if color_signed else mono_style
+            kwargs.update(valueFormatter=pct_formatter(decimals), type="rightAligned",
+                          cellStyle=signed_color if color_signed else mono_style)
         elif ctype == "progress":
-            max_val = spec.get("max", 100)
-            kwargs["valueFormatter"] = progress_value_formatter(decimals if decimals else 1)
-            kwargs["cellStyle"] = progress_cell_style(max_val)
-        else:
-            if color_signed:
-                kwargs["cellStyle"] = signed_color
+            kwargs.update(valueFormatter=pct_formatter(decimals if decimals else 1),
+                          cellStyle=progress_cell_style(spec.get("max", 100)), type="rightAligned")
+        elif color_signed:
+            kwargs["cellStyle"] = signed_color
 
         gb.configure_column(col, **kwargs)
 
@@ -354,18 +380,16 @@ def display_aggrid(df, columns: dict | None = None, height: int = TABLE_HEIGHT, 
             gb.configure_column(col, pinned="left")
 
     grid_options = gb.build()
+    grid_options["autoSizeStrategy"] = {"type": "fitGridWidth"}
+    grid_options["suppressCellFocus"] = True
+    grid_options["enableCellTextSelection"] = True
+    grid_options["tooltipShowDelay"] = 300
+    if totals:
+        grid_options["pinnedBottomRowData"] = [{c: totals.get(c) for c in df.columns}]
 
-    # AG-Grid renders inside an iframe, so the global ::-webkit-scrollbar CSS in
-    # style.py doesn't reach it. Inject matching dark-theme scrollbar rules here.
-    aggrid_scrollbar_css = {
-        "::-webkit-scrollbar": {"width": "8px !important", "height": "8px !important"},
-        "::-webkit-scrollbar-track": {"background": "#0B0E13 !important"},
-        "::-webkit-scrollbar-thumb": {"background": "#30363D !important", "border-radius": "4px !important"},
-        "::-webkit-scrollbar-thumb:hover": {"background": "#484F58 !important"},
-        ".ag-body-horizontal-scroll-viewport, .ag-body-vertical-scroll-viewport": {
-            "scrollbar-width": "thin", "scrollbar-color": "#30363D #0B0E13",
-        },
-    }
+    # Never taller than the content: a short table should not sit in an empty box.
+    content_height = 36 + 34 * max(len(df), 1) + (34 if totals else 0) + 8
+    height = min(height, content_height)
 
     return AgGrid(
         df,
@@ -374,7 +398,7 @@ def display_aggrid(df, columns: dict | None = None, height: int = TABLE_HEIGHT, 
         height=height,
         allow_unsafe_jscode=True,
         update_mode="NO_UPDATE",
-        custom_css=aggrid_scrollbar_css,
+        custom_css=_AGGRID_CSS,
     )
 
 

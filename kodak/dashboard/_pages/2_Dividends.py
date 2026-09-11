@@ -13,7 +13,7 @@ from kodak.dashboard.common import (
 )
 from kodak.shared.calculations import get_dividend_details, get_dividend_forecast, get_monthly_dividends
 
-page_setup("Dividend Analysis", "💰")
+page_setup("Dividend Analysis", "💰", "Income received, by year, month and payer, plus a forward estimate for current holdings.")
 
 
 @st.cache_data(ttl=CACHE_TTL)

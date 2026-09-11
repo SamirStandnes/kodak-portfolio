@@ -15,7 +15,7 @@ from kodak.dashboard.common import (
 )
 from kodak.shared.db import get_db_connection, query_df
 
-page_setup("System Status", "⚙️")
+page_setup("System Status", "⚙️", "Data integrity, market-data freshness and database health.")
 
 IS_CLOUD = bool(os.environ.get("DATABASE_URL"))
 

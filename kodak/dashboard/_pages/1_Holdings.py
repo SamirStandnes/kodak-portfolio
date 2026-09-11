@@ -15,7 +15,7 @@ from kodak.dashboard.common import (
 from kodak.shared.db import get_db_connection, query_df
 from kodak.shared.calculations import get_price_history
 
-page_setup("Holdings", "🏦")
+page_setup("Holdings", "🏦", "Every open position valued at the latest stored price, with cost basis, return and weight.")
 
 
 @st.cache_data(ttl=CACHE_TTL)
@@ -94,16 +94,15 @@ st.divider()
 
 # --- HOLDINGS TABLE ---
 st.subheader("All Holdings")
+# Numbers first (they fit the grid width without scrolling); classification
+# columns follow and are reachable by scrolling right. The name shows as a
+# tooltip on the symbol.
 table = pd.DataFrame({
     "Symbol": df_val['symbol'],
     "Name": df_val['name'],
     "Quantity": df_val['quantity'],
     "Price": df_val['price'],
     "Ccy": df_val['currency'],
-    "Sector": df_val['sector'],
-    "Region": df_val['region'],
-    "Country": df_val['country'],
-    "Type": df_val['asset_class'],
     "Market Value": df_val['market_value_local'].round(),
     "Cost Basis": df_val['cost_basis_local'].round(),
     "Change %": df_val['day_change_pct'],
@@ -111,29 +110,40 @@ table = pd.DataFrame({
     "Gain/Loss": df_val['gain_local'].round(),
     "Return %": df_val['return_pct'],
     "Weight %": df_val['weight_pct'],
+    "Sector": df_val['sector'],
+    "Region": df_val['region'],
+    "Country": df_val['country'],
+    "Type": df_val['asset_class'],
 })
 display_aggrid(
     table,
     columns={
-        "Symbol":       {"width": 110},
-        "Name":         {"width": 180},
-        "Quantity":     {"type": "quantity", "decimals": 4, "width": 100},
-        "Price":        {"type": "number", "decimals": 2, "width": 100},
-        "Ccy":          {"width": 70},
-        "Sector":       {"width": 140},
-        "Region":       {"width": 110},
-        "Country":      {"width": 110},
-        "Type":         {"width": 100},
-        "Market Value": {"type": "currency", "decimals": 0, "width": 140},
-        "Cost Basis":   {"type": "currency", "decimals": 0, "width": 130},
-        "Change %":     {"type": "percent",  "decimals": 2, "color_signed": True, "width": 110},
-        "Change Δ":     {"type": "currency", "decimals": 0, "color_signed": True, "width": 120},
-        "Gain/Loss":    {"type": "currency", "decimals": 0, "color_signed": True, "width": 130},
-        "Return %":     {"type": "percent",  "decimals": 1, "color_signed": True, "width": 110},
-        "Weight %":     {"type": "progress", "max": 100, "decimals": 1, "width": 140},
+        "Symbol":       {"width": 95, "tooltip_field": "Name"},
+        "Name":         {"hide": True},
+        "Quantity":     {"label": "Qty", "type": "quantity", "decimals": 4, "width": 80},
+        "Price":        {"type": "number", "decimals": 2, "width": 90},
+        "Ccy":          {"width": 60},
+        "Market Value": {"label": f"Value ({BASE_CURRENCY})", "type": "currency", "decimals": 0, "width": 115},
+        "Cost Basis":   {"label": "Cost", "type": "currency", "decimals": 0, "width": 105},
+        "Change %":     {"label": "Chg %", "type": "percent",  "decimals": 2, "color_signed": True, "width": 85},
+        "Change Δ":     {"label": f"Chg ({BASE_CURRENCY})", "type": "currency", "decimals": 0, "color_signed": True, "width": 105},
+        "Gain/Loss":    {"label": "Gain / Loss", "type": "currency", "decimals": 0, "color_signed": True, "width": 110},
+        "Return %":     {"label": "Return", "type": "percent",  "decimals": 1, "color_signed": True, "width": 85},
+        "Weight %":     {"label": "Weight", "type": "progress", "max": 100, "decimals": 1, "width": 110},
+        "Sector":       {"width": 150},
+        "Region":       {"width": 130},
+        "Country":      {"width": 130},
+        "Type":         {"width": 80},
     },
     pin_left=["Symbol"],
-    height=560,
+    height=900,
+    totals={
+        "Symbol": "Total", "Market Value": round(total_val), "Cost Basis": round(df_val['cost_basis_local'].sum()),
+        "Change Δ": round(change_value), "Gain/Loss": round(df_val['gain_local'].sum()),
+        "Change %": change_pct,
+        "Return %": (total_val / df_val['cost_basis_local'].sum() - 1) * 100 if df_val['cost_basis_local'].sum() else None,
+        "Weight %": 100.0,
+    },
 )
 st.caption(f"Market Value, Cost Basis, Change Δ and Gain/Loss are in {BASE_CURRENCY}; Price is in the asset's currency.")
 
