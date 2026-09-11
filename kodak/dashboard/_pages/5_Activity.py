@@ -74,14 +74,21 @@ if limit != "All":
     df = df.head(int(limit))
 
 # --- SUMMARY ---
-s1, s2, s3, s4 = st.columns(4)
+received = df.loc[df['amount_local'] > 0, 'amount_local'].sum()
+paid = df.loc[df['amount_local'] < 0, 'amount_local'].sum()
+s1, s2, s3, s4, s5 = st.columns(5)
 s1.metric("Matching Transactions", matched, help=f"Showing {len(df)}")
-s2.metric(f"Net Cash Flow ({BASE_CURRENCY})", format_local(df['amount_local'].sum()),
-          help="Sum of amount in base currency over the rows shown")
-s3.metric(f"Fees ({BASE_CURRENCY})", format_local(df['fee_local'].fillna(0).sum()))
-s4.download_button(
+s2.metric(f"Received ({BASE_CURRENCY})", format_local(received),
+          help="Sum of positive amounts in the rows shown: sale proceeds, deposits, dividends, interest received")
+s3.metric(f"Paid ({BASE_CURRENCY})", format_local(paid),
+          help="Sum of negative amounts in the rows shown: purchases, withdrawals, fees, interest charged")
+s4.metric(f"Net ({BASE_CURRENCY})", format_local(received + paid),
+          help="Received + Paid. Filtered to one direction (e.g. only sells) this is simply that total.")
+s5.metric(f"Fees ({BASE_CURRENCY})", format_local(df['fee_local'].fillna(0).sum()),
+          help="Trading fees embedded in the rows shown")
+st.download_button(
     "Download CSV", df.to_csv(index=False).encode('utf-8'),
-    file_name="kodak_transactions.csv", mime="text/csv", width="stretch",
+    file_name="kodak_transactions.csv", mime="text/csv",
 )
 
 display_table(df, {
