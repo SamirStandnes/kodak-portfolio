@@ -1,4 +1,4 @@
-# add_transactions.ps1
+﻿# add_transactions.ps1
 # Full pipeline to ingest, commit, and enrich new transactions.
 
 param([switch]$y)
@@ -38,6 +38,13 @@ if ($confirmation -eq 'y') {
     Write-Host "`n[3/8] Updating ISIN and Account Maps..." -ForegroundColor Yellow
     python -m kodak.pipeline.map_accounts
     python -m kodak.pipeline.map_isins
+
+    # 3b. Integrity audit: unknown types, sign errors, negative positions,
+    # broker-balance reconciliation. A failure here stops the pipeline before
+    # anything stale or wrong is exported or pushed to the cloud.
+    Write-Host "`n[3/8] Running ledger integrity audit..." -ForegroundColor Yellow
+    python -m kodak.maintenance.audit_db
+    if ($LASTEXITCODE -ne 0) { throw "Integrity audit reported errors - fix them (see above) before continuing." }
 
     Write-Host "`n[4/8] Fetching Latest Market Prices..." -ForegroundColor Yellow
     python -m kodak.pipeline.fetch_prices

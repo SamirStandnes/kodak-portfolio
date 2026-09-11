@@ -17,9 +17,11 @@ VALID_TRANSACTION_TYPES = {
     'BUY', 'SELL', 'DIVIDEND', 'DEPOSIT', 'WITHDRAWAL',
     'INTEREST', 'FEE', 'TAX', 'TRANSFER_IN', 'TRANSFER_OUT',
     'CURRENCY_EXCHANGE', 'ADJUSTMENT', 'OTHER',
+    'CFD',  # derivative position: cash P&L only, never a share quantity
     # Broker-specific types that get mapped
     'TILDELING INNLEGG RE', 'BYTTE INNLEGG VP', 'BYTTE UTTAK VP',
-    'EMISJON INNLEGG VP', 'INNLØSN. UTTAK VP'
+    'EMISJON INNLEGG VP', 'INNLØSN. UTTAK VP', 'UTSKILLING FISJON IN',
+    'INNSKUDD KONTANTER', 'TILBAKEBET. FOND AVG', 'SLETTING UTTAK VP',
 }
 
 # Standard Schema Contract
@@ -42,7 +44,11 @@ def create_empty_transaction() -> Dict[str, Any]:
         'source_file': '',
         'fee': 0.0,
         'fee_currency': BASE_CURRENCY,
-        'fee_local': 0.0
+        'fee_local': 0.0,
+        # Broker-side record of truth; leave None when the export has no such field
+        'broker_id': None,          # broker's own unique transaction id
+        'balance_after': None,      # broker cash balance after this row
+        'balance_currency': None,   # currency of balance_after
     }
 
 def clean_num(val) -> float:

@@ -103,6 +103,16 @@ def _parse_excel(file_path: str) -> List[Dict[str, Any]]:
                 item['type'] = 'SELL'
                 item['quantity'] = -abs(qty)
 
+            # CFD trades: Saxo books only margin / P&L, not the notional, and the
+            # export does not flag them (From Derivative = "No"). A "trade" whose
+            # booked amount is a small fraction of qty x price is a derivative,
+            # not a share purchase, and must never enter the share inventory.
+            notional_local = abs(qty) * price * (fx_rate if fx_rate > 0 else 1.0)
+            if notional_local > 0 and abs(amt_local) < 0.25 * notional_local:
+                logger.warning(f"{os.path.basename(file_path)}: '{text}' books {amt_local:,.2f} "
+                               f"against a notional of {notional_local:,.0f} - classified as CFD")
+                item['type'] = 'CFD'
+
         else:
             saxo_type = str(row['SaxoType']).lower() if 'SaxoType' in row else ''
             if 'utbytte' in text.lower() or 'dividend' in text.lower(): item['type'] = 'DIVIDEND'

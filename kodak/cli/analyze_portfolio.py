@@ -4,7 +4,7 @@ from datetime import date
 import pandas as pd
 from kodak.shared.db import get_db_connection, execute_query, query_df
 from kodak.shared.market_data import get_latest_prices, get_exchange_rate
-from kodak.shared.calculations import get_holdings, get_income_and_costs
+from kodak.shared.calculations import get_holdings, get_income_and_costs, get_total_cash_local
 from kodak.shared.utils import load_config
 from rich.console import Console
 from rich.table import Table
@@ -96,10 +96,7 @@ def get_portfolio_data():
         item['weight_pct'] = (item['market_value'] / total_market_value * 100) if total_market_value > 0 else 0
 
     # Calculate cash balance
-    with get_db_connection() as conn:
-        cash_balance_nok = query_df(
-            "SELECT COALESCE(SUM(amount_local), 0) as total FROM transactions", conn
-        ).iloc[0]['total']
+    cash_balance_nok = get_total_cash_local()
 
     summary = {
         'total_market_value': total_market_value,

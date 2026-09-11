@@ -26,6 +26,36 @@ c1.metric("Base Currency", BASE_CURRENCY)
 c2.metric("Database", "PostgreSQL (Neon)" if IS_CLOUD else "SQLite (local)")
 c3.metric("Cache TTL", f"{CACHE_TTL // 60} min")
 
+# --- Integrity audit ---
+st.subheader("Ledger Integrity")
+
+
+@st.cache_data(ttl=CACHE_TTL, show_spinner="Auditing ledger...")
+def load_audit():
+    from kodak.maintenance.audit_db import run_audit
+    return [(x.level, x.check, x.message, x.count, list(x.examples)) for x in run_audit()]
+
+
+findings = load_audit()
+n_err = sum(1 for x in findings if x[0] == 'ERROR')
+n_warn = sum(1 for x in findings if x[0] == 'WARN')
+a1, a2, a3 = st.columns(3)
+a1.metric("Errors", n_err, delta_color="inverse", delta=None if n_err == 0 else "needs attention")
+a2.metric("Warnings", n_warn)
+recon = next((x for x in findings if x[1] == 'reconciliation'), None)
+a3.metric("Broker Reconciliation", "OK" if recon and recon[0] == 'INFO' and recon[3] else ("FAIL" if recon and recon[0] == 'ERROR' else "n/a"),
+          help=recon[2] if recon else None)
+for level, check, message, count, examples in findings:
+    if level == 'INFO' and check != 'reconciliation':
+        continue
+    icon = {'ERROR': '🔴', 'WARN': '🟡', 'INFO': '🟢'}[level]
+    with st.expander(f"{icon} {check}: {message}" + (f" ({count})" if count else ""), expanded=(level == 'ERROR')):
+        for ex in examples[:15]:
+            st.text(f"• {ex}")
+        if not examples:
+            st.caption("No details.")
+st.caption("Same checks as `python -m kodak.maintenance.audit_db`, which runs after every import.")
+
 # --- Market data freshness ---
 st.subheader("Market Data Freshness")
 

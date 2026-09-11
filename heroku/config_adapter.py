@@ -43,7 +43,11 @@ def load_config() -> Dict[str, Any]:
             'TRANSFER_OUT',
             'OVERFØRING VIA TRUSTLY',
             'INNSKUDD KONTANTER',
-        ]
+        ],
+        'other': [
+            'DIVIDEND', 'INTEREST', 'FEE', 'TAX', 'CURRENCY_EXCHANGE', 'ADJUSTMENT',
+            'CFD', 'TILBAKEBET. FOND AVG', 'SLETTING UTTAK VP',
+        ],
     }
 
     return {

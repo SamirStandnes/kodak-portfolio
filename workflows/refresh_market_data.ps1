@@ -11,6 +11,8 @@ python -m kodak.pipeline.map_isins
 # 2. Fetch Prices
 Write-Host "`n[2/4] Fetching latest market prices..." -ForegroundColor Yellow
 python -m kodak.pipeline.fetch_prices
+# Fill any daily gaps since the last refresh (INSERT OR IGNORE: never overwrites)
+python -m kodak.maintenance.backfill_prices
 
 # 3. Export Performance & Holdings JSON
 Write-Host "`n[3/4] Exporting performance and holdings data..." -ForegroundColor Yellow

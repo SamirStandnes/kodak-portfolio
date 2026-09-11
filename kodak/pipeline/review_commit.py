@@ -13,6 +13,18 @@ ISIN_MAP_PATH = os.path.join('data', 'reference', 'isin_map.csv')
 AUTO_YES = '--yes' in sys.argv or '-y' in sys.argv
 
 
+def _nullable(value):
+    """pandas gives NaN for missing optional columns; the ledger wants NULL."""
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return value
+
+
 def _append_placeholder_accounts(unknown_accs):
     """Append placeholder rows to accounts_map.csv for new accounts."""
     if not os.path.exists(ACCOUNTS_MAP_PATH):
@@ -245,12 +257,14 @@ def _commit_data(df, new_accs, new_isins, base_curr):
                 INSERT INTO transactions (
                     external_id, account_id, instrument_id, date, type,
                     quantity, price, amount, currency,
-                    amount_local, exchange_rate, fee, fee_currency, fee_local, notes, batch_id, source_file, hash
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    amount_local, exchange_rate, fee, fee_currency, fee_local, notes, batch_id, source_file, hash,
+                    broker_id, balance_after, balance_currency
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
-                row['external_id'], acc_id, inst_id, row['date'], row['type'],
+                row['external_id'], acc_id, inst_id, str(row['date'])[:10], row['type'],
                 row['quantity'], row['price'], row['amount'], row['currency'],
-                row['amount_local'], row['exchange_rate'], row['fee'], row.get('fee_currency'), row.get('fee_local'), row['description'], row.get('batch_id'), row.get('source_file'), row.get('hash')
+                row['amount_local'], row['exchange_rate'], row['fee'], row.get('fee_currency'), row.get('fee_local'), row['description'], row.get('batch_id'), row.get('source_file'), row.get('hash'),
+                _nullable(row.get('broker_id')), _nullable(row.get('balance_after')), _nullable(row.get('balance_currency')),
             ))
             count += 1
             

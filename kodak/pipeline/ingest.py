@@ -11,6 +11,20 @@ import importlib
 RAW_PATH = os.path.join('data', 'new_raw_transactions')
 ARCHIVE_PATH = os.path.join(RAW_PATH, 'archive')
 
+def _archive_files(processed_files, batch_id):
+    """Move parsed source files to archive/<source>/, suffixing the batch id
+    when a file of the same name is already archived."""
+    for f_path, source_name in processed_files:
+        dest_dir = os.path.join(ARCHIVE_PATH, source_name)
+        os.makedirs(dest_dir, exist_ok=True)
+        dest = os.path.join(dest_dir, os.path.basename(f_path))
+        if os.path.exists(dest):
+            base, ext = os.path.splitext(os.path.basename(f_path))
+            dest = os.path.join(dest_dir, f"{base}_{batch_id}{ext}")
+        os.replace(f_path, dest)
+        logging.info(f"Archived {os.path.basename(f_path)} to {source_name}/")
+
+
 def run_ingestion():
     log_file = setup_logging("ingest_new")
     logging.info(f"Starting ingestion process. Log file: {log_file}")
@@ -83,6 +97,18 @@ def run_ingestion():
         LEFT JOIN instruments i ON t.instrument_id = i.id
     ''')
 
+    # Exact dedup key: the broker's own transaction id, when the export carries
+    # one (Nordnet "Id"). Beats the hash heuristic, which can't tell a re-import
+    # from a genuinely repeated transaction.
+    existing_broker_ids = {
+        (row['acc_ext'], str(row['broker_id']))
+        for row in execute_query('''
+            SELECT a.external_id AS acc_ext, t.broker_id
+            FROM transactions t JOIN accounts a ON t.account_id = a.id
+            WHERE t.broker_id IS NOT NULL
+        ''')
+    }
+
     existing_h1_counts = Counter()
     existing_h2_hashes = set()
     for row in existing_txns:
@@ -122,11 +148,22 @@ def run_ingestion():
     skipped_existing = 0
     skipped_batch_dup = 0
     staged_h1_counts = Counter()
+    seen_broker_ids = set()
 
     for item in all_rows:
         isin = item['isin'] if item['isin'] else ''
         amt = item['amount']
         amt_local = item['amount_local']
+
+        broker_key = (item['account_external_id'], str(item['broker_id'])) if item.get('broker_id') else None
+        if broker_key:
+            if broker_key in existing_broker_ids:
+                skipped_existing += 1
+                continue
+            if broker_key in seen_broker_ids:
+                skipped_batch_dup += 1
+                continue
+            seen_broker_ids.add(broker_key)
 
         h1 = generate_txn_hash(item['date'], item['account_external_id'], item['type'], isin, amt)
         h2 = generate_txn_hash(item['date'], item['account_external_id'], item['type'], isin, amt_local) if amt_local else None
@@ -156,8 +193,12 @@ def run_ingestion():
         to_stage.append(item)
 
     logging.info(f"Staging {len(to_stage)} transactions (Skipped {skipped_existing} existing, {skipped_batch_dup} batch duplicates).")
-    
+
     if not to_stage:
+        # Everything in these files is already in the ledger: archive them so
+        # they are not re-parsed on every run.
+        _archive_files(processed_files, batch_id)
+        conn.close()
         return
 
     # 5. Write to Staging Table
@@ -182,38 +223,36 @@ def run_ingestion():
             description TEXT,
             source_file TEXT,
             hash TEXT,
-            batch_id TEXT
+            batch_id TEXT,
+            broker_id TEXT,
+            balance_after REAL,
+            balance_currency TEXT
         )
     ''')
+    # Staging tables created by older versions lack the broker_* columns.
+    staging_cols = {row[1] for row in conn.execute("PRAGMA table_info(transactions_staging)")}
+    for col, ddl in (('broker_id', 'TEXT'), ('balance_after', 'REAL'), ('balance_currency', 'TEXT')):
+        if col not in staging_cols:
+            execute_non_query(f"ALTER TABLE transactions_staging ADD COLUMN {col} {ddl}")
 
     # Insert
     # We can use pandas to_sql for convenience with the list of dicts
     df_stage = pd.DataFrame(to_stage)
-    
-    # Ensure all columns match
-    # Convert datetime objects to string
-    df_stage['date'] = df_stage['date'].astype(str)
+    for col in ('broker_id', 'balance_after', 'balance_currency'):
+        if col not in df_stage.columns:
+            df_stage[col] = None
+
+    # Ledger dates are calendar days (YYYY-MM-DD). Some exports carry a time
+    # component; strip it so date comparisons never depend on the source.
+    df_stage['date'] = df_stage['date'].astype(str).str[:10]
     
     try:
         df_stage.to_sql('transactions_staging', conn, if_exists='append', index=False)
         logging.info("Data pushed to staging.")
-        
+
         # 6. Archive Files
-        for f_path, source_name in processed_files:
-            # Create archive/nordnet/ etc.
-            dest_dir = os.path.join(ARCHIVE_PATH, source_name)
-            os.makedirs(dest_dir, exist_ok=True)
-            
-            dest = os.path.join(dest_dir, os.path.basename(f_path))
-            
-            # Handle duplicates in archive by appending timestamp if needed
-            if os.path.exists(dest):
-                base, ext = os.path.splitext(os.path.basename(f_path))
-                dest = os.path.join(dest_dir, f"{base}_{batch_id}{ext}")
-            
-            os.replace(f_path, dest)
-            logging.info(f"Archived {os.path.basename(f_path)} to {source_name}/")
-            
+        _archive_files(processed_files, batch_id)
+
     except Exception as e:
         logging.error(f"Error writing to staging: {e}")
     finally:

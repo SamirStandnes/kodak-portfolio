@@ -13,19 +13,14 @@ from kodak.dashboard.common import (
     render_chart, display_aggrid, load_valued_holdings, load_portfolio_history,
     price_freshness,
 )
-from kodak.shared.db import get_db_connection, query_df
-from kodak.shared.calculations import get_income_and_costs
+from kodak.shared.calculations import get_income_and_costs, get_total_cash_local
 
 page_setup("Portfolio Overview", "📈")
 
 
 @st.cache_data(ttl=CACHE_TTL)
 def load_cash_and_income():
-    with get_db_connection() as conn:
-        cash = query_df(
-            "SELECT COALESCE(SUM(amount_local), 0) as total FROM transactions", conn
-        ).iloc[0]['total']
-    return float(cash), get_income_and_costs()
+    return get_total_cash_local(), get_income_and_costs()
 
 
 df_val = load_valued_holdings()
@@ -49,7 +44,8 @@ col1.metric(
     help=f"Holdings + cash. Change is since the previous price refresh ({prev_date})." if prev_date else None,
 )
 col2.metric("Stock Holdings", format_local(market_value))
-col3.metric("Cash & Margin", format_local(cash), help="Negative = margin usage")
+col3.metric("Cash & Margin", format_local(cash),
+            help="Running balance per settlement currency at today's FX rate. Negative = margin usage")
 
 col4, col5, col6 = st.columns(3)
 col4.metric("Unrealized P&L", format_local(total_gain), format_pct(total_return_pct, 1, sign=True))

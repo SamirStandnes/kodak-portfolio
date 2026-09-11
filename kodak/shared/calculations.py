@@ -195,16 +195,38 @@ def xirr(transactions: List[Tuple[datetime, float]]) -> float:
             a_r, f_a = mid, f_mid
     return float((a_r + b_r) / 2)
 
+def _add_cash(cash_by_ccy: Dict[str, float], row) -> None:
+    """Accumulate a transaction into the running balance of its settlement
+    currency (base currency: amount_local; foreign: amount)."""
+    ccy = row['settle_currency'] or BASE_CURRENCY
+    amt = row['amount_local'] if ccy == BASE_CURRENCY else row['amount']
+    if amt is None or pd.isna(amt):
+        return
+    cash_by_ccy[ccy] = cash_by_ccy.get(ccy, 0.0) + float(amt)
+
+
+def _cash_local(cash_by_ccy: Dict[str, float], price_dict: dict, ref_date: str, missing_log: list) -> float:
+    """Value per-currency cash balances in base currency at ref_date's FX."""
+    total = 0.0
+    for ccy, bal in cash_by_ccy.items():
+        if ccy == BASE_CURRENCY:
+            total += bal
+        elif abs(bal) > 0.005:
+            total += bal * get_price_with_fallback(f"{ccy}{BASE_CURRENCY}=X", price_dict, ref_date, missing_log)
+    return total
+
+
 def get_yearly_contribution(target_year: str) -> Tuple[pd.DataFrame, float, List[Dict[str, Any]]]:
     query = """
-        SELECT t.date, t.type, t.instrument_id, t.quantity, t.amount_local, t.fee_local, i.symbol, i.currency
+        SELECT t.date, t.type, t.instrument_id, t.quantity, t.amount, t.amount_local, t.fee_local, i.symbol, i.currency,
+               COALESCE(t.balance_currency, ?) AS settle_currency
         FROM transactions t
         LEFT JOIN instruments i ON t.instrument_id = i.id
         WHERE t.date <= ?
         ORDER BY t.date, t.id
     """
     with get_db_connection() as conn:
-        df = query_df(query, conn, params=(f"{target_year}-12-31",))
+        df = query_df(query, conn, params=(BASE_CURRENCY, f"{target_year}-12-31"))
     if df.empty: return pd.DataFrame(), 0.0, []
     
     soy_date = f"{int(target_year)-1}-12-31"
@@ -224,7 +246,7 @@ def get_yearly_contribution(target_year: str) -> Tuple[pd.DataFrame, float, List
 
     # 2. Replay Loop State
     holdings = {}; soy_holdings = {}; eoy_holdings = {}; pos_flows = {}; dividends = {}; detailed_flows = {}
-    cash_soy = 0.0; cash_eoy = 0.0; cash_flows_ext = 0.0
+    cash_soy_ccy = {}; cash_eoy_ccy = {}; cash_flows_ext = 0.0
     fees_t = 0.0; int_t = 0.0; tax_t = 0.0
     sym_currency = {}
 
@@ -232,9 +254,9 @@ def get_yearly_contribution(target_year: str) -> Tuple[pd.DataFrame, float, List
         t_date = row['date'][:10]; t_date_obj = pd.to_datetime(t_date); t_year = t_date[:4]; t_type = row['type']; qty = row['quantity']; amt = row['amount_local']
         sym = row['symbol']
         
-        # Track Cash
-        if t_date <= soy_date: cash_soy += amt
-        cash_eoy += amt
+        # Track Cash (per settlement currency; valued at the snapshot date's FX below)
+        if t_date <= soy_date: _add_cash(cash_soy_ccy, row)
+        _add_cash(cash_eoy_ccy, row)
         
         if t_year == target_year:
             if t_type in EXTERNAL_FLOW_TYPES: cash_flows_ext += amt
@@ -286,10 +308,15 @@ def get_yearly_contribution(target_year: str) -> Tuple[pd.DataFrame, float, List
         if c != BASE_CURRENCY:
             pair = f"{c}{BASE_CURRENCY}=X"; fetch_list.append(pair); fx_map[c] = pair
     
+    for c in set(cash_soy_ccy) | set(cash_eoy_ccy):
+        if c != BASE_CURRENCY and f"{c}{BASE_CURRENCY}=X" not in fetch_list:
+            fetch_list.append(f"{c}{BASE_CURRENCY}=X"); fx_map[c] = f"{c}{BASE_CURRENCY}=X"
     p_soy = get_historical_prices_by_date(fetch_list, soy_date)
     p_eoy = get_historical_prices_by_date(fetch_list, eoy_date)
 
     missing_prices = []
+    cash_soy = _cash_local(cash_soy_ccy, p_soy, soy_date, missing_prices)
+    cash_eoy = _cash_local(cash_eoy_ccy, p_eoy, eoy_date, missing_prices)
 
     def calc_snapshot_eq(h_dict, p_dict, cash_v, ref_date):
         total_v = 0.0
@@ -356,17 +383,18 @@ def get_yearly_contribution(target_year: str) -> Tuple[pd.DataFrame, float, List
 
 def get_yearly_equity_curve() -> Tuple[pd.DataFrame, List[Dict[str, Any]]]:
     query = """
-        SELECT t.date, t.type, t.instrument_id, t.quantity, t.amount_local, i.symbol, i.currency
+        SELECT t.date, t.type, t.instrument_id, t.quantity, t.amount, t.amount_local, i.symbol, i.currency,
+               COALESCE(t.balance_currency, ?) AS settle_currency
         FROM transactions t
         LEFT JOIN instruments i ON t.instrument_id = i.id
         ORDER BY t.date, t.id
     """
     with get_db_connection() as conn:
-        df = query_df(query, conn)
+        df = query_df(query, conn, params=(BASE_CURRENCY,))
     if df.empty: return pd.DataFrame(), []
     df['year'] = df['date'].str[:4]; years = sorted(df['year'].unique())
     split_map = get_internal_splits()
-    holdings = {}; cash_balance = 0.0; results = []
+    holdings = {}; cash_by_ccy = {}; results = []
     # 1. External Flows (Portfolio Level)
     flow_txns = df[df['type'].isin(EXTERNAL_FLOW_TYPES)].copy()
     flow_txns['date_obj'] = pd.to_datetime(flow_txns['date'], format='mixed')
@@ -380,7 +408,8 @@ def get_yearly_equity_curve() -> Tuple[pd.DataFrame, List[Dict[str, Any]]]:
 
     for year in years:
         for _, row in df[df['year'] == year].iterrows():
-            t_type = row['type']; qty = row['quantity']; amt = row['amount_local']; cash_balance += amt; sym = row['symbol']
+            t_type = row['type']; qty = row['quantity']; amt = row['amount_local']; sym = row['symbol']
+            _add_cash(cash_by_ccy, row)
             if sym:
                 if sym not in holdings: holdings[sym] = {'qty': 0.0, 'cost': 0.0, 'curr': row['currency']}
                 h = holdings[sym]
@@ -404,7 +433,11 @@ def get_yearly_equity_curve() -> Tuple[pd.DataFrame, List[Dict[str, Any]]]:
             if holdings[s]['curr'] != BASE_CURRENCY:
                 pair = f"{holdings[s]['curr']}{BASE_CURRENCY}=X"
                 if pair not in fetch_list: fetch_list.append(pair)
+        for c in cash_by_ccy:
+            if c != BASE_CURRENCY and f"{c}{BASE_CURRENCY}=X" not in fetch_list:
+                fetch_list.append(f"{c}{BASE_CURRENCY}=X")
         price_data = get_historical_prices_by_date(fetch_list, date_str)
+        cash_balance = _cash_local(cash_by_ccy, price_data, date_str, missing_prices)
         equity_holdings = 0.0
         for s, h in holdings.items():
             price = get_price_with_fallback(s, price_data, date_str, missing_prices)
@@ -578,7 +611,7 @@ def get_total_xirr() -> float:
                 p, c = m; fx = get_exchange_rate(c, BASE_CURRENCY) if c != BASE_CURRENCY else 1.0
                 total_mv += r['quantity'] * p * fx
             else: total_mv += r['cost_basis_local']
-    curr_eq = total_mv + df['amount_local'].sum()
+    curr_eq = total_mv + get_total_cash_local()
     if curr_eq > 0: x_flows.append((pd.Timestamp.now(), curr_eq))
     return xirr(x_flows) * 100
 
@@ -1190,6 +1223,10 @@ def get_realized_performance():
             add_stat(year, 'tax', amt)      # usually negative
         elif t_type == 'FEE':
             add_stat(year, 'fees', -abs(amt)) # Explicit fee transaction
+        elif t_type == 'CFD':
+            # Derivative trade: the booked amount IS the realized cash result
+            # (margin in/out and P&L); there is no share inventory to cost.
+            add_stat(year, 'realized_gl', amt)
 
         # 2. Capital Gains (Buy/Sell)
         # Only process if instrument is involved
@@ -1397,6 +1434,39 @@ def get_valued_holdings() -> pd.DataFrame:
 
 PORTFOLIO_HISTORY_COLUMNS = ['date', 'holdings_value', 'cash', 'total_value', 'net_deposits']
 
+def get_cash_balances() -> pd.DataFrame:
+    """Cash per settlement currency, valued at today's FX rate.
+
+    The naive "cash = SUM(amount_local)" values every cash movement at the
+    rate of its own day, so a foreign-currency balance bought at one rate and
+    spent at another leaves a phantom base-currency residue (the realized FX
+    result on that cash never shows up anywhere). The broker's actual cash is
+    the running balance per currency, converted at the current rate.
+
+    Settlement currency is `balance_currency` when the export provided it
+    (Nordnet) and the base currency otherwise (Saxo / DNB book everything in
+    the account currency). Returns columns: currency, balance, rate, value_local.
+    """
+    with get_db_connection() as conn:
+        df = query_df(
+            "SELECT COALESCE(balance_currency, ?) AS currency, amount, amount_local "
+            "FROM transactions", conn, params=(BASE_CURRENCY,))
+    if df.empty:
+        return pd.DataFrame(columns=['currency', 'balance', 'rate', 'value_local'])
+    df['amount'] = df['amount'].fillna(0.0)
+    df['amount_local'] = df['amount_local'].fillna(0.0)
+    df['settle'] = df['amount_local'].where(df['currency'] == BASE_CURRENCY, df['amount'])
+    bal = df.groupby('currency')['settle'].sum().reset_index().rename(columns={'settle': 'balance'})
+    bal['rate'] = bal['currency'].map(lambda c: 1.0 if c == BASE_CURRENCY else get_exchange_rate(c, BASE_CURRENCY))
+    bal['value_local'] = bal['balance'] * bal['rate']
+    return bal.sort_values('value_local', ascending=False, key=abs).reset_index(drop=True)
+
+
+def get_total_cash_local() -> float:
+    """Total cash & margin in base currency (see get_cash_balances)."""
+    return float(get_cash_balances()['value_local'].sum())
+
+
 
 def get_portfolio_value_history() -> pd.DataFrame:
     """Portfolio value in base currency on every date that has stored prices.
@@ -1425,8 +1495,9 @@ def get_portfolio_value_history() -> pd.DataFrame:
             "SELECT from_currency, date, rate FROM exchange_rates WHERE to_currency = ?",
             conn, params=(BASE_CURRENCY,))
         txns = query_df(
-            "SELECT date, type, instrument_id, quantity, amount_local FROM transactions",
-            conn)
+            "SELECT date, type, instrument_id, quantity, amount, amount_local, "
+            "COALESCE(balance_currency, ?) AS settle_currency FROM transactions",
+            conn, params=(BASE_CURRENCY,))
         instruments = query_df("SELECT id, symbol, currency FROM instruments", conn)
 
     if txns.empty:
@@ -1507,7 +1578,19 @@ def get_portfolio_value_history() -> pd.DataFrame:
         return s.reindex(s.index.union(dates)).ffill().reindex(dates).fillna(0.0)
 
     txns['amount_local'] = txns['amount_local'].fillna(0.0)
-    cash = running_total(txns)
+    txns['amount'] = txns['amount'].fillna(0.0)
+    # Cash = running balance per settlement currency x that day's FX rate
+    # (see get_cash_balances for why SUM(amount_local) is not the cash).
+    cash = pd.Series(0.0, index=dates)
+    for ccy, g in txns.groupby('settle_currency'):
+        g = g.assign(amount_local=g['amount_local'] if ccy == BASE_CURRENCY else g['amount'])
+        bal = running_total(g)
+        if ccy == BASE_CURRENCY:
+            cash += bal
+        else:
+            if ccy not in fxm.columns or fxm[ccy].isna().all():
+                fxm[ccy] = get_exchange_rate(ccy, BASE_CURRENCY)
+            cash += bal * fxm[ccy].ffill().bfill()
     net_deposits = running_total(txns[txns['type'].isin(EXTERNAL_FLOW_TYPES)])
 
     out = pd.DataFrame({

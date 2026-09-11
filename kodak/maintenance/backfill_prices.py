@@ -122,6 +122,25 @@ def backfill(start: date | None, end: date, dry_run: bool) -> None:
     currencies = sorted(c for c in windows['currency'].dropna().unique() if c != BASE_CURRENCY)
     pairs = [f"{c}{BASE_CURRENCY}=X" for c in currencies]
     fx_closes = download_closes(pairs, global_start - timedelta(days=PAD_DAYS), end)
+    # Yahoo has thin or no history for some direct pairs (HKDNOK=X only goes
+    # back to 2026). Fall back to the USD cross: c->BASE = USD->BASE / USD->c.
+    cross_needed = [c for c, pair in zip(currencies, pairs)
+                    if c != 'USD' and (fx_closes.get(pair) is None or len(fx_closes[pair]) < 250)]
+    if cross_needed:
+        cross = download_closes([f"USD{c}=X" for c in cross_needed] + [f"USD{BASE_CURRENCY}=X"],
+                                global_start - timedelta(days=PAD_DAYS), end)
+        usd_base = cross.get(f"USD{BASE_CURRENCY}=X")
+        for c in cross_needed:
+            usd_c = cross.get(f"USD{c}=X")
+            if usd_base is None or usd_c is None:
+                continue
+            derived = (usd_base / usd_c.reindex(usd_base.index).ffill()).dropna()
+            direct = fx_closes.get(f"{c}{BASE_CURRENCY}=X")
+            # keep direct quotes where they exist, fill the rest from the cross
+            fx_closes[f"{c}{BASE_CURRENCY}=X"] = (
+                direct.combine_first(derived) if direct is not None else derived)
+            logger.info(f"{c}{BASE_CURRENCY}: {len(derived)} rates derived via USD cross")
+
     fx_rows = []
     for c, pair in zip(currencies, pairs):
         series = fx_closes.get(pair)

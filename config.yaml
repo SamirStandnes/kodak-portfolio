@@ -39,3 +39,17 @@ transaction_types:
     - TRANSFER_OUT
     - OVERFØRING VIA TRUSTLY    # Nordnet: Trustly transfer
     - INNSKUDD KONTANTER        # Nordnet: cash credited back (e.g. reversal of a failed withdrawal)
+
+  # Every other type the ledger may contain. The integrity audit fails on a
+  # type that appears in none of these lists, so a new broker event can't
+  # silently distort the numbers again.
+  other:
+    - DIVIDEND
+    - INTEREST
+    - FEE
+    - TAX
+    - CURRENCY_EXCHANGE
+    - ADJUSTMENT              # capital distributions, CFD cash adjustments, corrections
+    - CFD                     # derivative trade: cash P&L only, no share quantity
+    - TILBAKEBET. FOND AVG    # Nordnet: fund fee rebate
+    - SLETTING UTTAK VP       # Nordnet: worthless rights removed (no cash)

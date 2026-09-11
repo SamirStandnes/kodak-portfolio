@@ -158,6 +158,34 @@ Both local and cloud use the same entry point (`kodak/dashboard/Home.py`) and
 modular pages (`kodak/dashboard/_pages/`). The old monolithic `heroku/app.py`,
 the `Procfile` and `runtime.txt` were Heroku leftovers and have been removed.
 
+## Record of truth: broker ids, balances, audit
+
+`transactions` carries three broker-side columns: `broker_id` (the broker's own
+transaction id, Nordnet `Id`), `balance_after` (broker cash balance after the row,
+Nordnet `Saldo`) and `balance_currency`. The Nordnet parser fills them; other
+parsers leave them NULL. They serve two purposes:
+
+- **Exact de-duplication** in `ingest.py`: a row whose `(account, broker_id)` is
+  already in the ledger is skipped outright; the hash heuristic is the fallback.
+- **Reconciliation** in `kodak/maintenance/audit_db.py`: consecutive rows of one
+  account and settlement currency must move the broker balance by exactly the
+  ledger's cash amount. A drift names the exact row.
+
+`python -m kodak.maintenance.audit_db` runs after every commit in
+`add_transactions.ps1` (non-zero exit stops the pipeline) and is shown on the
+System page. It also fails on any transaction type missing from
+`config.yaml transaction_types.*` (add new broker event types there AND in
+`heroku/config_adapter.py`).
+
+**Cash is per settlement currency.** `get_cash_balances()` / `get_total_cash_local()`
+(calculations.py) sum the running balance per `COALESCE(balance_currency, base)`
+and convert at today's rate. Never use `SUM(amount_local)` as cash: it values each
+movement at its own day's rate and leaves a phantom residue equal to the FX result
+on foreign cash (that was a 9 319 NOK error on Nordnet AF).
+
+One-off tools: `link_broker_ids.py` stamps rows imported before these columns
+existed from the archived exports; `backfill_prices.py` fills price/FX history.
+
 ## Testing the dashboard
 
 `tests/test_dashboard_pages.py` renders every page headlessly through

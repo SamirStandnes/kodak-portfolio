@@ -28,7 +28,7 @@ CREATE TABLE transactions (
     currency TEXT NOT NULL, exchange_rate REAL, amount_local REAL,
     fee REAL, fee_currency TEXT, fee_local REAL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, notes TEXT, batch_id TEXT,
-    source_file TEXT, hash TEXT);
+    source_file TEXT, hash TEXT, broker_id TEXT, balance_after REAL, balance_currency TEXT);
 CREATE TABLE market_prices (
     instrument_id INTEGER NOT NULL REFERENCES instruments(id), date TEXT NOT NULL,
     close REAL, currency TEXT, source TEXT, PRIMARY KEY (instrument_id, date));
@@ -70,10 +70,12 @@ def add_instrument(path, iid, symbol, currency="NOK", **meta):
          meta.get("sector"), meta.get("region"), meta.get("country"), meta.get("asset_class")))
 
 
-def add_txn(path, date, type_, amount_local, instrument_id=None, quantity=None, currency="NOK"):
-    run(path, "INSERT INTO transactions (account_id, instrument_id, date, type, quantity, amount, currency, amount_local) "
-              "VALUES (1, ?, ?, ?, ?, ?, ?, ?)",
-        (instrument_id, date, type_, quantity, amount_local, currency, amount_local))
+def add_txn(path, date, type_, amount_local, instrument_id=None, quantity=None, currency="NOK",
+            amount=None, settle=None, broker_id=None, balance=None):
+    run(path, "INSERT INTO transactions (account_id, instrument_id, date, type, quantity, amount, currency, "
+              "amount_local, broker_id, balance_after, balance_currency) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (instrument_id, date, type_, quantity, amount_local if amount is None else amount, currency, amount_local,
+         broker_id, balance, settle))
 
 
 def add_price(path, iid, date, close):
@@ -314,3 +316,42 @@ class TestHelpers:
         df = calc.get_monthly_dividends(4)
         assert len(df) == 4
         assert df["total"].sum() == 0
+
+
+class TestCashBalances:
+
+    def test_base_currency_cash_is_sum_of_amount_local(self, temp_db):
+        add_txn(temp_db, "2026-01-01", "DEPOSIT", 1000.0)
+        add_txn(temp_db, "2026-01-02", "FEE", -10.0)
+        df = calc.get_cash_balances()
+        assert df.set_index("currency").loc["NOK", "balance"] == pytest.approx(990.0)
+        assert calc.get_total_cash_local() == pytest.approx(990.0)
+
+    def test_foreign_cash_valued_at_current_rate_not_historical(self, temp_db):
+        """1000 USD bought for 8 000 NOK, then spent when USD is worth 10:
+        SUM(amount_local) would show -2 000 NOK of phantom cash; the real
+        balances are 0 NOK and 0 USD."""
+        add_txn(temp_db, "2026-01-01", "DEPOSIT", 8000.0, settle="NOK")
+        add_txn(temp_db, "2026-01-02", "CURRENCY_EXCHANGE", -8000.0, settle="NOK")
+        add_txn(temp_db, "2026-01-02", "CURRENCY_EXCHANGE", 8000.0, currency="USD", amount=1000.0, settle="USD")
+        add_txn(temp_db, "2026-01-10", "BUY", -10000.0, instrument_id=None, currency="USD", amount=-1000.0, settle="USD")
+        df = calc.get_cash_balances().set_index("currency")
+        assert df.loc["USD", "balance"] == pytest.approx(0.0)
+        assert df.loc["NOK", "balance"] == pytest.approx(0.0)
+        assert calc.get_total_cash_local() == pytest.approx(0.0)
+
+    def test_open_foreign_balance_uses_stubbed_rate(self, temp_db):
+        add_txn(temp_db, "2026-01-02", "CURRENCY_EXCHANGE", 8000.0, currency="USD", amount=1000.0, settle="USD")
+        df = calc.get_cash_balances().set_index("currency")
+        assert df.loc["USD", "value_local"] == pytest.approx(1000.0 * 10.0)   # stub: USD = 10
+
+    def test_history_cash_uses_per_currency_balances(self, temp_db):
+        add_instrument(temp_db, 1, "AAA")
+        add_txn(temp_db, "2026-01-01", "CURRENCY_EXCHANGE", 8000.0, currency="USD", amount=1000.0, settle="USD")
+        add_txn(temp_db, "2026-01-01", "BUY", -100.0, instrument_id=1, quantity=1)
+        add_price(temp_db, 1, "2026-01-02", 100.0)
+        add_price(temp_db, 1, "2026-01-05", 100.0)
+        add_fx(temp_db, "USD", "2026-01-02", 9.0)
+        add_fx(temp_db, "USD", "2026-01-05", 11.0)
+        df = calc.get_portfolio_value_history()
+        assert df["cash"].tolist() == pytest.approx([1000 * 9.0 - 100.0, 1000 * 11.0 - 100.0])

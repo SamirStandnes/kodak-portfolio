@@ -139,7 +139,13 @@ def parse(file_path: str) -> List[Dict[str, Any]]:
             'source_file': os.path.basename(file_path),
             'fee': fee_raw,
             'fee_currency': fee_currency,
-            'fee_local': fee_local
+            'fee_local': fee_local,
+            # Nordnet's own record: unique transaction Id and the cash balance
+            # (in the Beløp currency) after this row. Used for exact dedup and
+            # for reconciling the ledger against the broker.
+            'broker_id': str(int(row['Id'])) if pd.notna(row.get('Id')) else None,
+            'balance_after': clean_num(row['Saldo']) if pd.notna(row.get('Saldo')) else None,
+            'balance_currency': v1,
         }
         results.append(item)
         

@@ -50,7 +50,7 @@ TABLES = [
      ['external_id', 'account_id', 'instrument_id', 'date', 'type', 'quantity',
       'price', 'amount', 'currency', 'exchange_rate', 'amount_local', 'fee',
       'fee_currency', 'fee_local', 'created_at', 'notes', 'batch_id',
-      'source_file', 'hash'],
+      'source_file', 'hash', 'broker_id', 'balance_after', 'balance_currency'],
      True),
     ('market_prices',
      ['instrument_id', 'date', 'close', 'currency', 'source'],
@@ -127,7 +127,10 @@ def create_postgresql_schema(pg_conn, base_currency='NOK'):
             notes TEXT,
             batch_id TEXT,
             source_file TEXT,
-            hash TEXT
+            hash TEXT,
+            broker_id TEXT,
+            balance_after DOUBLE PRECISION,
+            balance_currency TEXT
         )
     ''')
 

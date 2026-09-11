@@ -85,9 +85,21 @@ def initialize_database():
             notes TEXT,
             batch_id TEXT,
             source_file TEXT,
-            hash TEXT
+            hash TEXT,
+
+            -- Broker-side record of truth (populated when the export provides it):
+            broker_id TEXT,          -- the broker's own transaction id (Nordnet "Id")
+            balance_after REAL,      -- broker cash balance after this row ("Saldo")
+            balance_currency TEXT    -- currency that balance_after is stated in
         )
     ''')
+
+    # Older databases predate the broker_* columns: add them in place.
+    existing = {row[1] for row in c.execute("PRAGMA table_info(transactions)")}
+    for col, ddl in (('broker_id', 'TEXT'), ('balance_after', 'REAL'), ('balance_currency', 'TEXT')):
+        if col not in existing:
+            c.execute(f"ALTER TABLE transactions ADD COLUMN {col} {ddl}")
+            logger.info(f"Added transactions.{col}")
 
     # --- 3. Market Data ---
 
