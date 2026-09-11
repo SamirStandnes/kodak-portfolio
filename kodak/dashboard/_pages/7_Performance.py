@@ -67,24 +67,31 @@ if not df_years.empty:
     fig = go.Figure()
     fig.add_trace(go.Bar(
         x=df_years['year'], y=df_years['end_equity'],
-        name='End Equity', marker_color=COLORS['primary'], yaxis='y',
-        hovertemplate=f"%{{y:,.0f}} {BASE_CURRENCY}<extra>End Equity</extra>",
+        name=f'End equity ({BASE_CURRENCY})', yaxis='y', width=0.42,
+        marker=dict(color='rgba(102,126,234,0.55)', line=dict(color=COLORS['primary'], width=1.5),
+                    cornerradius=6),
+        hovertemplate=f"%{{y:,.0f}} {BASE_CURRENCY}<extra>End equity</extra>",
     ))
     fig.add_trace(go.Scatter(
         x=df_years['year'], y=df_years['return_pct'],
-        name='Annual Return (XIRR)', mode='lines+markers',
-        line=dict(color=COLORS['positive'], width=3), yaxis='y2',
-        hovertemplate="%{y:+.2f}%<extra>XIRR</extra>",
+        name='Annual return (XIRR)', mode='lines+markers+text', yaxis='y2',
+        line=dict(color=COLORS['positive'], width=2.5, shape='spline', smoothing=0.6),
+        marker=dict(size=9, color=COLORS['positive'], line=dict(color=COLORS['bg'], width=2)),
+        text=[f"{v:+.0f} %" for v in df_years['return_pct']], textposition='top center',
+        textfont=dict(size=11, color=COLORS['text'], family="'JetBrains Mono', monospace"),
+        hovertemplate="%{y:+.2f} %<extra>XIRR</extra>",
     ))
+    pad = max(abs(df_years['return_pct'].min()), abs(df_years['return_pct'].max())) * 1.35
     fig.update_layout(
-        yaxis=dict(side='left', showgrid=False, title=f'Equity ({BASE_CURRENCY})'),
-        yaxis2=dict(side='right', overlaying='y', showgrid=True, title='Return (%)',
-                    zeroline=True, zerolinecolor=COLORS['border'],
-                    tickfont=dict(color=COLORS['text_secondary'], family="'JetBrains Mono', monospace"),
-                    title_font=dict(color=COLORS['text_secondary'])),
-        legend=dict(orientation='h', y=1.08, x=0),
+        yaxis=dict(side='left', showgrid=True, title=f'Equity ({BASE_CURRENCY})', rangemode='tozero'),
+        yaxis2=dict(side='right', overlaying='y', showgrid=False, title='Return (%)',
+                    range=[-pad, pad], zeroline=True, zerolinecolor='rgba(139,148,158,0.5)',
+                    zerolinewidth=1, ticksuffix=' %',
+                    tickfont=dict(color=COLORS['text_secondary'], size=11, family="'JetBrains Mono', monospace"),
+                    title_font=dict(color=COLORS['text_secondary'], size=11)),
+        legend=dict(orientation='h', y=1.1, x=0),
         xaxis_title='', xaxis=dict(type='category'), hovermode='x unified',
-        margin=dict(l=40, r=40, t=40, b=40),
+        bargap=0.5, margin=dict(l=48, r=48, t=48, b=40), height=420,
     )
     st.subheader("Yearly Equity & Returns")
     render_chart(fig)
