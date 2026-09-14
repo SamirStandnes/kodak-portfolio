@@ -48,6 +48,7 @@ if ($confirmation -eq 'y') {
 
     Write-Host "`n[4/8] Fetching Latest Market Prices..." -ForegroundColor Yellow
     python -m kodak.pipeline.fetch_prices
+    python -m kodak.pipeline.fetch_benchmarks
 
     Write-Host "`n[5/8] Enriching Historical FX Rates..." -ForegroundColor Yellow
     python -m kodak.pipeline.enrich_fx

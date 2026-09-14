@@ -124,6 +124,11 @@ def initialize_database():
         )
     ''')
 
+    # --- 4. Benchmarks (indices the Performance page compares against) ---
+    from kodak.shared.benchmarks import DDL as BENCHMARK_DDL
+    for ddl in BENCHMARK_DDL:
+        c.execute(ddl)
+
     conn.commit()
     conn.close()
     logger.info(f"Database schema ensured at {DB_PATH}")

@@ -193,6 +193,19 @@ the audit reports them as INFO rather than "held without price".
 One-off tools: `link_broker_ids.py` stamps rows imported before these columns
 existed from the archived exports; `backfill_prices.py` fills price/FX history.
 
+## Benchmarks and time-weighted returns
+
+Layered on purpose, keep it that way:
+
+| Layer | Where | Notes |
+|---|---|---|
+| Config | `config.yaml` `benchmarks:` (mirrored in `heroku/config_adapter.py`) | code, name, Yahoo symbol, currency. Prefer total-return series (`^SP500TR`, `OSEBX.OL`, `IWDA.AS`) |
+| Storage | `benchmarks` (dimension), `benchmark_prices` (daily close, index currency) | Separate from `instruments`/`market_prices`: an index is not a holding. DDL in `kodak/shared/benchmarks.py`, created by `initialize_database` and `migrate_db` |
+| Fetch | `kodak/pipeline/fetch_benchmarks.py` (local, INSERT OR IGNORE); `update_benchmarks()` in `heroku/scripts/update_prices.py` (cloud cron) | Both run in the workflows / GitHub Actions. The cloud reads the list from the `benchmarks` table, populated by `deploy_data.ps1` |
+| Math | `kodak/shared/returns.py` | Pure pandas: `growth_index` (chain-linked TWR with start-of-day flows), `yearly_returns`, `annualized`, `rebase`, `shadow_portfolio` (same cash flows invested in the index + XIRR). No DB, no network |
+| Comparison | `kodak/shared/benchmarks.py::compare_to_benchmarks(history)` | Converts index closes to base currency with stored FX, returns growth-of-100 frame, yearly table, annualized TWRs and the shadow-portfolio table |
+| UI | Performance page, "Versus Benchmarks" | XIRR (money-weighted) stays for "how did my money do"; TWR is the like-for-like number against an index |
+
 ## Testing the dashboard
 
 `tests/test_dashboard_pages.py` renders every page headlessly through

@@ -57,6 +57,11 @@ def load_config() -> Dict[str, Any]:
         'isin_map_file': 'isin_map.csv',
         'accounts_map_file': 'accounts_map.csv',
         'transaction_types': transaction_types,
+        'benchmarks': [
+            {'code': 'OSEBX', 'name': 'OSEBX', 'symbol': 'OSEBX.OL', 'currency': 'NOK'},
+            {'code': 'MSCIWORLD', 'name': 'MSCI World', 'symbol': 'IWDA.AS', 'currency': 'EUR'},
+            {'code': 'SP500', 'name': 'S&P 500', 'symbol': '^SP500TR', 'currency': 'USD'},
+        ],
     }
 
 

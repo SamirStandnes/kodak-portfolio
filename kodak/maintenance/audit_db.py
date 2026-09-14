@@ -189,6 +189,24 @@ def run_audit() -> List[Finding]:
         f.append(Finding('WARN', 'price_currency', "market_prices rows whose currency differs from the instrument",
                          int(bad_ccy.iloc[0]['n'])))
 
+    # --- benchmarks ---
+    try:
+        from kodak.shared.benchmarks import configured_benchmarks, latest_benchmark_dates
+        latest_b = latest_benchmark_dates()
+        stale_b = []
+        for b in configured_benchmarks():
+            d = latest_b.get(b.code)
+            if not d:
+                stale_b.append(f"{b.name}: no prices stored")
+            elif (date.today() - date.fromisoformat(d[:10])).days > STALE_DAYS:
+                stale_b.append(f"{b.name}: latest {d[:10]}")
+        if stale_b:
+            f.append(Finding('WARN', 'stale_benchmarks',
+                             "Benchmark indices missing or stale (run kodak.pipeline.fetch_benchmarks)",
+                             len(stale_b), stale_b))
+    except Exception as e:  # never let the benchmark check break the ledger audit
+        f.append(Finding('INFO', 'stale_benchmarks', f"Benchmark check skipped: {e}", 0))
+
     f.append(Finding('INFO', 'summary',
                      f"{len(txns)} transactions, {len(held)} open positions, "
                      f"{int(txns['broker_id'].notna().sum())} rows carry a broker id", 0))

@@ -16,6 +16,7 @@ Usage:
     python -m kodak.maintenance.backfill_prices              # whole history
     python -m kodak.maintenance.backfill_prices --start 2024-01-01
     python -m kodak.maintenance.backfill_prices --dry-run    # report only
+    python -m kodak.maintenance.backfill_prices --rebuild    # re-create backfilled rows
 
 After running locally, push to the cloud with .\\workflows\\deploy_data.ps1.
 """
@@ -77,6 +78,32 @@ def download_closes(symbols: list, start: date, end: date) -> dict:
     return out
 
 
+def unadjust_for_splits(series: pd.Series, symbol: str) -> pd.Series:
+    """Convert Yahoo's split-adjusted closes back to the share scale of each day.
+
+    Yahoo restates history in today's share count: after a 20:1 split every
+    earlier close is divided by 20, after a 1:5 reverse split multiplied by 5.
+    The ledger records quantities as they were on the day (a BYTTE pair
+    changes them on the split date), so prices must be in the same day's
+    scale or a position sold before a later reverse split is valued at many
+    times its true worth. raw = adjusted x product(ratio) over splits after
+    the date, where Yahoo's ratio is new/old shares (20 for 20:1, 0.2 for 1:5).
+    """
+    try:
+        splits = yf.Ticker(symbol).splits
+    except Exception:
+        return series
+    if splits is None or len(splits) == 0:
+        return series
+    factor = pd.Series(1.0, index=series.index)
+    for split_date, ratio in splits.items():
+        if ratio and ratio > 0:
+            factor[series.index < pd.Timestamp(split_date).tz_localize(None)] *= float(ratio)
+    if (factor != 1.0).any():
+        logger.info(f"{symbol}: {int((factor != 1.0).sum())} closes rescaled for later splits")
+    return series * factor
+
+
 def yahoo_currencies(symbols: list) -> dict:
     """{symbol: quote currency} via fast_info (one light request per symbol)."""
     result = {}
@@ -88,7 +115,7 @@ def yahoo_currencies(symbols: list) -> dict:
     return result
 
 
-def backfill(start: date | None, end: date, dry_run: bool) -> None:
+def backfill(start: date | None, end: date, dry_run: bool, rebuild: bool = False) -> None:
     windows = holding_windows()
     if windows.empty:
         logger.warning("No priceable instruments found.")
@@ -109,6 +136,9 @@ def backfill(start: date | None, end: date, dry_run: bool) -> None:
         lo = max(w['first_date'].date(), global_start) - timedelta(days=PAD_DAYS)
         hi = (date.today() if w['open'] else w['last_date'].date() + timedelta(days=PAD_DAYS))
         hi = min(hi, end)
+        series = series.copy()
+        series.index = series.index.tz_localize(None) if series.index.tz is not None else series.index
+        series = unadjust_for_splits(series, w['symbol'])
         sel = series[(series.index.date >= lo) & (series.index.date <= hi)]
         per_symbol[w['symbol']] = len(sel)
         rows.extend((int(w['id']), d.strftime('%Y-%m-%d'), float(v), w['currency'], 'yfinance-backfill')
@@ -167,6 +197,12 @@ def backfill(start: date | None, end: date, dry_run: bool) -> None:
         logger.info("Dry run - nothing written.")
         return
 
+    if rebuild:
+        with get_db_connection() as conn:
+            n = conn.execute("DELETE FROM market_prices WHERE source = 'yfinance-backfill'").rowcount
+            conn.commit()
+        logger.info(f"Rebuild: removed {n} previously backfilled price rows")
+
     inserted = execute_batch(
         "INSERT OR IGNORE INTO market_prices (instrument_id, date, close, currency, source) VALUES (?, ?, ?, ?, ?)",
         rows)
@@ -184,9 +220,11 @@ def main():
     parser.add_argument('--end', type=date.fromisoformat, default=date.today(),
                         help='last date to backfill (default: today)')
     parser.add_argument('--dry-run', action='store_true', help='download and report, write nothing')
+    parser.add_argument('--rebuild', action='store_true',
+                        help='delete earlier backfilled rows first (cron rows are kept), e.g. after a split fix')
     args = parser.parse_args()
     setup_logging('backfill_prices')
-    backfill(args.start, args.end, args.dry_run)
+    backfill(args.start, args.end, args.dry_run, rebuild=args.rebuild)
 
 
 if __name__ == '__main__':

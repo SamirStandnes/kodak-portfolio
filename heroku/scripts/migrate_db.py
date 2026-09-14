@@ -58,6 +58,12 @@ TABLES = [
     ('exchange_rates',
      ['from_currency', 'to_currency', 'date', 'rate'],
      False),
+    ('benchmarks',
+     ['code', 'name', 'symbol', 'currency', 'sort_order'],
+     False),
+    ('benchmark_prices',
+     ['code', 'date', 'close'],
+     False),
 ]
 
 # Fail fast instead of queueing behind a long-running dashboard query. DROP TABLE
@@ -72,6 +78,8 @@ def create_postgresql_schema(pg_conn, base_currency='NOK'):
     cursor = pg_conn.cursor()
 
     logger.info("Dropping existing tables if they exist...")
+    cursor.execute("DROP TABLE IF EXISTS benchmark_prices CASCADE")
+    cursor.execute("DROP TABLE IF EXISTS benchmarks CASCADE")
     cursor.execute("DROP TABLE IF EXISTS exchange_rates CASCADE")
     cursor.execute("DROP TABLE IF EXISTS market_prices CASCADE")
     cursor.execute("DROP TABLE IF EXISTS transactions CASCADE")
@@ -152,6 +160,24 @@ def create_postgresql_schema(pg_conn, base_currency='NOK'):
             date TEXT NOT NULL,
             rate DOUBLE PRECISION,
             PRIMARY KEY (from_currency, to_currency, date)
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE benchmarks (
+            code TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            currency TEXT NOT NULL,
+            sort_order INTEGER DEFAULT 0
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE benchmark_prices (
+            code TEXT NOT NULL REFERENCES benchmarks(code),
+            date TEXT NOT NULL,
+            close DOUBLE PRECISION,
+            PRIMARY KEY (code, date)
         )
     ''')
 

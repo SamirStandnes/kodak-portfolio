@@ -1306,6 +1306,7 @@ def get_realized_performance():
 # as-is for every one of these (sells/withdrawals are stored negative).
 POSITION_TYPES = set(INFLOW_TYPES) | set(OUTFLOW_TYPES)
 MIN_HOLDING_QTY = 0.001  # same dust threshold get_holdings() uses
+BFILL_LIMIT_DAYS = 35    # how far a first stored close may be carried backwards in time
 
 _PRICE_SNAPSHOT_SQL = """
     WITH ranked AS (
@@ -1506,11 +1507,10 @@ def get_portfolio_value_history() -> pd.DataFrame:
             "SELECT date, type, instrument_id, quantity, amount, amount_local, "
             "COALESCE(balance_currency, ?) AS settle_currency FROM transactions",
             conn, params=(BASE_CURRENCY,))
-        instruments = query_df("SELECT id, symbol, currency FROM instruments", conn)
+        instruments = query_df("SELECT id, currency FROM instruments", conn)
 
     if txns.empty:
         return empty
-    split_map = get_internal_splits()
 
     def to_day(series: pd.Series) -> pd.Series:
         return pd.to_datetime(series.astype(str).str[:10], format='%Y-%m-%d')
@@ -1541,17 +1541,21 @@ def get_portfolio_value_history() -> pd.DataFrame:
     qty = qty.where(qty.abs() > MIN_HOLDING_QTY, 0.0)
     net_invested = (-running(pos, 'amount_local')).clip(lower=0.0)
 
-    # Yahoo closes are always in today's share scale, but the ledger quantity
-    # before a split (BYTTE pair) is in the old scale. Rescale pre-split
-    # quantities exactly like get_adjusted_qty() does for the yearly curve.
-    symbol_of = dict(zip(instruments['id'], instruments['symbol']))
-    for inst_id in qty.columns:
-        for split_date, ratio in split_map.get(symbol_of.get(inst_id), []):
-            qty.loc[qty.index < split_date, inst_id] *= ratio
+    # Stored closes are in the share scale of their own day (backfill_prices
+    # undoes Yahoo's split adjustment), and so is the ledger quantity, so no
+    # rescaling is needed here. (The yearly curve, which prices year-ends live
+    # from Yahoo, still rescales via get_adjusted_qty.)
 
-    # --- Price matrix (ffill between refreshes, bfill before first close) ---
-    px = (prices.pivot_table(index='date', columns='instrument_id', values='close', aggfunc='last')
-                .reindex(dates).ffill().bfill())
+    # --- Price matrix: carry closes forward between refreshes; carry the first
+    # close back only a few weeks (an instrument whose first stored close is
+    # years after it was bought is valued at net cost before that, not at a
+    # price from another era).
+    pivot = prices.pivot_table(index='date', columns='instrument_id', values='close', aggfunc='last')
+    px = pivot.reindex(dates).ffill().bfill()
+    for inst_id in px.columns:
+        first_close = pivot[inst_id].first_valid_index()
+        if first_close is not None:
+            px.loc[px.index < first_close - pd.Timedelta(days=BFILL_LIMIT_DAYS), inst_id] = np.nan
 
     # --- FX matrix ---
     currency_of = dict(zip(instruments['id'], instruments['currency']))
@@ -1572,11 +1576,13 @@ def get_portfolio_value_history() -> pd.DataFrame:
     holdings_value = pd.Series(0.0, index=dates)
     for inst_id in qty.columns:
         q = qty[inst_id]
+        at_cost = net_invested[inst_id].where(q != 0, 0.0)
         if inst_id in px.columns:
             rate = fxm[currency_of.get(inst_id) or BASE_CURRENCY]
-            holdings_value += q * px[inst_id] * rate
+            priced = q * px[inst_id] * rate
+            holdings_value += priced.where(px[inst_id].notna(), at_cost)
         else:
-            holdings_value += net_invested[inst_id].where(q != 0, 0.0)
+            holdings_value += at_cost
 
     # --- Cash and external flows ---
     def running_total(frame: pd.DataFrame) -> pd.Series:

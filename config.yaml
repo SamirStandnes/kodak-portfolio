@@ -53,3 +53,23 @@ transaction_types:
     - CFD                     # derivative trade: cash P&L only, no share quantity
     - TILBAKEBET. FOND AVG    # Nordnet: fund fee rebate
     - SLETTING UTTAK VP       # Nordnet: worthless rights removed (no cash)
+
+# Benchmark indices for the Performance page (time-weighted comparison and
+# "same deposits in the index"). Use total-return series where Yahoo has them,
+# otherwise the portfolio's dividends would make it look better than it is.
+# Closes are stored in benchmark_prices in the index's own currency and
+# converted with the stored FX rates. Add/remove freely; the cloud reads the
+# same list from the benchmarks table after deploy_data.ps1.
+benchmarks:
+  - code: OSEBX
+    name: OSEBX
+    symbol: OSEBX.OL          # Oslo Bors Benchmark Index, total return, NOK
+    currency: NOK
+  - code: MSCIWORLD
+    name: MSCI World
+    symbol: IWDA.AS           # iShares Core MSCI World (accumulating), EUR
+    currency: EUR
+  - code: SP500
+    name: S&P 500
+    symbol: ^SP500TR          # S&P 500 total return, USD
+    currency: USD

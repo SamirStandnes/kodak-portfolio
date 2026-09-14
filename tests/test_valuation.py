@@ -36,6 +36,10 @@ CREATE TABLE exchange_rates (
     from_currency TEXT NOT NULL, to_currency TEXT NOT NULL, date TEXT NOT NULL,
     rate REAL, PRIMARY KEY (from_currency, to_currency, date));
 CREATE TABLE transactions_staging (external_id TEXT);
+CREATE TABLE benchmarks (code TEXT PRIMARY KEY, name TEXT NOT NULL, symbol TEXT NOT NULL,
+    currency TEXT NOT NULL, sort_order INTEGER DEFAULT 0);
+CREATE TABLE benchmark_prices (code TEXT NOT NULL, date TEXT NOT NULL, close DOUBLE PRECISION,
+    PRIMARY KEY (code, date));
 """
 
 
@@ -254,6 +258,20 @@ class TestPortfolioValueHistory:
         df = calc.get_portfolio_value_history()
         assert df["holdings_value"].tolist() == pytest.approx([350.0, 350.0])
 
+    def test_first_close_far_in_the_future_is_not_carried_back(self, temp_db):
+        """A fund bought in 2019 whose only stored closes start years later must
+        be valued at cost in 2019, not at the later price."""
+        add_instrument(temp_db, 1, "AAA")
+        add_instrument(temp_db, 2, "FUND")
+        add_txn(temp_db, "2019-01-01", "BUY", -100.0, instrument_id=1, quantity=1)
+        add_txn(temp_db, "2019-01-01", "BUY", -1000.0, instrument_id=2, quantity=10)
+        add_price(temp_db, 1, "2019-01-02", 100.0)
+        add_price(temp_db, 1, "2025-01-02", 100.0)
+        add_price(temp_db, 2, "2025-01-02", 500.0)    # 10 x 500 = 5000 today, but not in 2019
+        df = calc.get_portfolio_value_history().set_index("date")
+        assert df.loc["2019-01-02", "holdings_value"] == pytest.approx(100.0 + 1000.0)
+        assert df.loc["2025-01-02", "holdings_value"] == pytest.approx(100.0 + 5000.0)
+
     def test_never_priced_instrument_is_carried_at_net_invested(self, temp_db):
         add_instrument(temp_db, 1, "AAA")
         add_instrument(temp_db, 2, "PRIVATE")
@@ -280,18 +298,19 @@ class TestPortfolioValueHistory:
         assert hist.iloc[-1]["holdings_value"] == pytest.approx(valued["market_value_local"].sum())
         assert hist.iloc[-1]["total_value"] == pytest.approx(valued["market_value_local"].sum() + 2000.0)
 
-    def test_pre_split_quantity_is_rescaled_to_yahoo_share_scale(self, temp_db):
-        """A 1:10 split recorded as a BYTTE pair: Yahoo's earlier closes are
-        already divided by 10, so the 10 old shares must count as 100."""
+    def test_split_uses_each_days_own_share_scale(self, temp_db):
+        """Stored closes are in the share scale of their day (the backfill
+        undoes Yahoo's split adjustment). A 1:10 split recorded as a BYTTE
+        pair therefore needs no rescaling: 10 shares x 100 before, 100 x 12 after."""
         add_instrument(temp_db, 1, "SPLIT")
         add_txn(temp_db, "2026-01-01", "BUY", -1000.0, instrument_id=1, quantity=10)
         add_txn(temp_db, "2026-01-06", "BYTTE UTTAK VP", 0.0, instrument_id=1, quantity=-10)
         add_txn(temp_db, "2026-01-06", "BYTTE INNLEGG VP", 0.0, instrument_id=1, quantity=100)
-        add_price(temp_db, 1, "2026-01-02", 10.0)    # post-split scale (was 100 pre-split)
-        add_price(temp_db, 1, "2026-01-09", 12.0)
+        add_price(temp_db, 1, "2026-01-02", 100.0)   # pre-split scale
+        add_price(temp_db, 1, "2026-01-09", 12.0)    # post-split scale
 
         df = calc.get_portfolio_value_history().set_index("date")
-        assert df.loc["2026-01-02", "holdings_value"] == pytest.approx(100 * 10.0)
+        assert df.loc["2026-01-02", "holdings_value"] == pytest.approx(10 * 100.0)
         assert df.loc["2026-01-09", "holdings_value"] == pytest.approx(100 * 12.0)
 
     def test_timestamps_in_date_column_are_normalised(self, temp_db):

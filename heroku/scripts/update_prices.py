@@ -209,6 +209,47 @@ def update_exchange_rates():
     logger.info(f"Exchange rate update complete: {updated} updated")
 
 
+def update_benchmarks():
+    """Appends the latest closes for the benchmark indices listed in the
+    `benchmarks` table (populated from config.yaml by deploy_data.ps1)."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT code, symbol FROM benchmarks ORDER BY sort_order")
+        benchmarks = cursor.fetchall()
+    except Exception as e:
+        conn.rollback()
+        logger.warning(f"No benchmarks table yet ({e}); run deploy_data.ps1 after upgrading")
+        conn.close()
+        return
+
+    inserted = 0
+    for code, symbol in benchmarks:
+        try:
+            hist = yf.download(symbol, period="1mo", progress=False, auto_adjust=False)
+            if hist is None or hist.empty:
+                logger.warning(f"  {code} ({symbol}): no data")
+                continue
+            close = hist['Close']
+            if hasattr(close, 'columns'):
+                close = close.iloc[:, 0]
+            for d, v in close.dropna().items():
+                if v <= 0:
+                    continue
+                cursor.execute('''
+                    INSERT INTO benchmark_prices (code, date, close) VALUES (%s, %s, %s)
+                    ON CONFLICT (code, date) DO NOTHING
+                ''', (code, d.strftime('%Y-%m-%d'), float(v)))
+                inserted += cursor.rowcount
+            logger.info(f"  {code} ({symbol}): latest {close.index[-1].date()} = {float(close.iloc[-1]):.2f}")
+        except Exception as e:
+            logger.error(f"  Error fetching benchmark {code} ({symbol}): {e}")
+
+    conn.commit()
+    conn.close()
+    logger.info(f"Benchmark update complete: {inserted} new rows")
+
+
 def main():
     logger.info("=" * 50)
     logger.info("Starting daily price update")
@@ -216,6 +257,7 @@ def main():
 
     update_prices()
     update_exchange_rates()
+    update_benchmarks()
 
     logger.info("=" * 50)
     logger.info("Daily update complete")

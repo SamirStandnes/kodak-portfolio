@@ -10,13 +10,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 from kodak.dashboard.common import (
     BASE_CURRENCY, CACHE_TTL, COLORS, page_setup, format_local, format_pct,
-    display_table, number_col, text_col, render_chart,
+    display_table, number_col, text_col, render_chart, load_portfolio_history,
 )
 from kodak.shared.calculations import (
     get_yearly_equity_curve, get_yearly_contribution, get_total_xirr, get_realized_performance,
 )
 
-page_setup("Performance", "📊", "Money-weighted returns by year, realized results, and what drove each year.")
+page_setup("Performance", "📊", "Your money-weighted return (XIRR), time-weighted return against OSEBX, MSCI World and S&P 500, realized results, and what drove each year.")
 
 
 @st.cache_data(ttl=CACHE_TTL)
@@ -111,6 +111,90 @@ if not df_years.empty:
             st.dataframe(pd.DataFrame(missing_prices), width="stretch", hide_index=True)
 else:
     st.info("No yearly data available.")
+
+st.divider()
+
+# --- 2b. Versus benchmarks (time-weighted) ---
+st.subheader("Versus Benchmarks")
+st.caption(
+    "Time-weighted: the growth of 1 krone kept invested, so the timing and size of your deposits "
+    f"do not matter. That is how an index is measured, so this is the like-for-like comparison. "
+    f"All series in {BASE_CURRENCY}; indices are total return (dividends reinvested)."
+)
+
+
+@st.cache_data(ttl=CACHE_TTL, show_spinner="Comparing with benchmarks...")
+def load_benchmark_comparison(xirr_pct: float):
+    from kodak.shared.benchmarks import compare_to_benchmarks
+    return compare_to_benchmarks(load_portfolio_history(), portfolio_xirr_pct=xirr_pct)
+
+
+cmp = load_benchmark_comparison(total_xirr)
+if cmp is None or cmp.growth.shape[1] < 2:
+    st.info("No benchmark prices stored yet. Run `python -m kodak.pipeline.fetch_benchmarks` "
+            "(part of refresh_market_data.ps1).")
+else:
+    names = [c for c in cmp.growth.columns if c != 'Portfolio']
+    bcols = st.columns(1 + len(names))
+    bcols[0].metric("Portfolio (annualized TWR)", format_pct(cmp.annualized['Portfolio'], 2),
+                    help=f"Since {cmp.start:%d %b %Y}")
+    for col, name in zip(bcols[1:], names):
+        diff = cmp.annualized['Portfolio'] - cmp.annualized[name]
+        col.metric(name, format_pct(cmp.annualized[name], 2), format_pct(diff, 2, sign=True),
+                   help=f"Delta = portfolio minus {name}, annualized")
+
+    fig_b = go.Figure()
+    fig_b.add_trace(go.Scatter(
+        x=cmp.growth.index, y=cmp.growth['Portfolio'], name='Portfolio', mode='lines',
+        line=dict(color=COLORS['primary'], width=2.5),
+        hovertemplate="%{y:,.1f}<extra>Portfolio</extra>",
+    ))
+    for name, color in zip(names, [COLORS['positive'], COLORS['warning'], COLORS['pink'], COLORS['light_blue']]):
+        fig_b.add_trace(go.Scatter(
+            x=cmp.growth.index, y=cmp.growth[name], name=name, mode='lines',
+            line=dict(color=color, width=1.6),
+            hovertemplate=f"%{{y:,.1f}}<extra>{name}</extra>",
+        ))
+    fig_b.update_layout(
+        yaxis=dict(title='Growth of 100'), xaxis=dict(
+            rangeselector=dict(buttons=[
+                dict(count=1, label="1Y", step="year", stepmode="backward"),
+                dict(count=3, label="3Y", step="year", stepmode="backward"),
+                dict(label="YTD", step="year", stepmode="todate"),
+                dict(label="All", step="all"),
+            ], bgcolor=COLORS['bg_surface'], activecolor=COLORS['primary'], font=dict(color=COLORS['text'])),
+        ),
+        legend=dict(orientation='h', y=-0.18, x=0), hovermode='x unified',
+        margin=dict(l=48, r=24, t=40, b=70), height=440,
+    )
+    render_chart(fig_b)
+
+    yt = cmp.yearly.rename_axis('Year').reset_index()
+    if not df_years.empty:
+        yt = yt.merge(df_years[['year', 'return_pct']].rename(columns={'year': 'Year', 'return_pct': 'Portfolio XIRR'}),
+                      on='Year', how='left')
+        yt = yt[['Year', 'Portfolio XIRR', 'Portfolio TWR'] + names]
+    ycfg = {"Year": text_col("Year")}
+    for c in yt.columns[1:]:
+        ycfg[c] = number_col(c, fmt="%.1f%%")
+    st.markdown("**By year** (percent). XIRR is your money-weighted return; TWR and the indices are time-weighted.")
+    display_table(yt, ycfg, height=min(400, 34 * len(yt) + 44))
+
+    if not cmp.shadow.empty:
+        st.markdown(f"**Same deposits in the index.** Every deposit and withdrawal you made, placed in the "
+                    f"index on the same day. Value today and money-weighted return, directly comparable with yours.")
+        sh = cmp.shadow.copy()
+        sh['portfolio_xirr_pct'] = sh['portfolio_xirr_pct'].fillna(total_xirr)
+        display_table(sh, {
+            "benchmark": text_col("Benchmark"),
+            "index_value": number_col(f"Index value today ({BASE_CURRENCY})"),
+            "portfolio_value": number_col(f"Your value ({BASE_CURRENCY})"),
+            "difference": number_col(f"You vs index ({BASE_CURRENCY})"),
+            "index_xirr_pct": number_col("Index XIRR", fmt="%.2f%%"),
+            "portfolio_xirr_pct": number_col("Your XIRR", fmt="%.2f%%"),
+        }, height=34 * len(sh) + 44)
+    if cmp.missing:
+        st.caption("No stored prices yet for: " + ", ".join(cmp.missing))
 
 st.divider()
 
