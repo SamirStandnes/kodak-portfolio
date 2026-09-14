@@ -190,6 +190,15 @@ flags any unpriced zero-cost (or Rights) position `is_nominal`. Pages exclude no
 rows from tables, counts and weights (they are listed in a caption / on System), and
 the audit reports them as INFO rather than "held without price".
 
+**Price scale convention.** `market_prices.close` is always in the share scale of
+its own day (what one share cost then). The daily cron stores today's raw close;
+`backfill_prices.py` undoes Yahoo's split adjustment (Yahoo restates history in
+today's share count) using each symbol's split history. Ledger quantities are
+also day-of-trade (a BYTTE pair changes them on the split date), so value =
+quantity x close with no rescaling. A first stored close is carried backwards at
+most 35 days; earlier dates value the position at net cost. Rebuild with
+`python -m kodak.maintenance.backfill_prices --rebuild` if this ever drifts.
+
 One-off tools: `link_broker_ids.py` stamps rows imported before these columns
 existed from the archived exports; `backfill_prices.py` fills price/FX history.
 
