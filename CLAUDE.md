@@ -199,6 +199,20 @@ quantity x close with no rescaling. A first stored close is carried backwards at
 most 35 days; earlier dates value the position at net cost. Rebuild with
 `python -m kodak.maintenance.backfill_prices --rebuild` if this ever drifts.
 
+**Share transfers between brokers.** Moving a position from one of our accounts
+to another is not a disposal, but the ledger records it as a TRANSFER_OUT and a
+TRANSFER_IN with no cash, so the naive reading strips the cost basis on the way
+out and adds nothing back on the way in (a 415-share AENA move would have turned
+115k NOK of cost into a phantom gain). `get_internal_security_transfers()` in
+calculations.py pairs the two legs - same instrument, same quantity, different
+account, within 10 days, since the two brokers rarely book on the same day - and
+every replay loop (`get_holdings`, `get_yearly_contribution`,
+`get_yearly_equity_curve`, `get_realized_performance`) then moves only the
+quantity and leaves the cost with the shares. `get_portfolio_value_history()`
+dates both legs to the outgoing one so shares in transit don't dip out of the
+value curve. An **unpaired** leg keeps the normal inflow/outflow treatment: those
+shares really did leave for, or arrive from, an untracked broker.
+
 One-off tools: `link_broker_ids.py` stamps rows imported before these columns
 existed from the archived exports; `backfill_prices.py` fills price/FX history.
 

@@ -49,6 +49,66 @@ def get_internal_splits() -> Dict[str, List[Tuple[pd.Timestamp, float]]]:
                 splits[symbol].append((pd.to_datetime(date), ratio))
     return splits
 
+
+INTERNAL_TRANSFER_WINDOW_DAYS = 10
+
+
+def get_internal_security_transfers() -> Dict[int, str]:
+    """Share transfers that only move a position between two accounts in this
+    ledger, as ``{transaction id: settlement date of the pair}``.
+
+    Moving shares from one broker to another is not a disposal: no cash changes
+    hands and the position never leaves the portfolio, so the cost basis has to
+    travel with the shares instead of being stripped out like a sale. Legs are
+    paired per instrument, a TRANSFER_OUT against a TRANSFER_IN of the same
+    quantity from another account within ``INTERNAL_TRANSFER_WINDOW_DAYS`` (the
+    two brokers rarely book their side on the same day).
+
+    Both legs map to the TRANSFER_OUT date so a caller that replays the ledger
+    day by day can book them together: shares in transit belong to the
+    portfolio the whole time, and a gap would show up as a phantom dip.
+
+    An unpaired leg keeps the normal inflow/outflow treatment: those shares
+    really did arrive from, or leave for, somewhere this ledger does not track.
+    """
+    query = """
+        SELECT t.id, t.date, t.account_id, t.instrument_id, t.type, t.quantity
+        FROM transactions t
+        WHERE t.instrument_id IS NOT NULL
+          AND t.type IN ('TRANSFER_IN', 'TRANSFER_OUT')
+        ORDER BY t.date, t.id
+    """
+    with get_db_connection() as conn:
+        df = query_df(query, conn)
+
+    internal: Dict[int, str] = {}
+    if df.empty:
+        return internal
+
+    df = df.copy()
+    df['date_obj'] = pd.to_datetime(df['date'].astype(str).str[:10], format='%Y-%m-%d')
+    window = pd.Timedelta(days=INTERNAL_TRANSFER_WINDOW_DAYS)
+
+    for _, group in df.groupby('instrument_id'):
+        outs = group[group['type'] == 'TRANSFER_OUT'].to_dict('records')
+        ins = group[group['type'] == 'TRANSFER_IN'].to_dict('records')
+        matched = set()
+        for out in outs:
+            for inn in ins:
+                if inn['id'] in matched or inn['account_id'] == out['account_id']:
+                    continue
+                if abs(abs(inn['quantity']) - abs(out['quantity'])) > 0.001:
+                    continue
+                if abs(inn['date_obj'] - out['date_obj']) > window:
+                    continue
+                matched.add(inn['id'])
+                settled = str(out['date'])[:10]
+                internal[out['id']] = settled
+                internal[inn['id']] = settled
+                break
+    return internal
+
+
 def get_adjusted_qty(symbol: str, raw_qty: float, ref_date: str, split_map: Dict[str, List[Tuple[pd.Timestamp, float]]]) -> float:
     """
     Adjusts raw quantity to today's scale based on splits occurring after ref_date.
@@ -218,7 +278,7 @@ def _cash_local(cash_by_ccy: Dict[str, float], price_dict: dict, ref_date: str, 
 
 def get_yearly_contribution(target_year: str) -> Tuple[pd.DataFrame, float, List[Dict[str, Any]]]:
     query = """
-        SELECT t.date, t.type, t.instrument_id, t.quantity, t.amount, t.amount_local, t.fee_local, i.symbol, i.currency,
+        SELECT t.id, t.date, t.type, t.instrument_id, t.quantity, t.amount, t.amount_local, t.fee_local, i.symbol, i.currency,
                COALESCE(t.balance_currency, ?) AS settle_currency
         FROM transactions t
         LEFT JOIN instruments i ON t.instrument_id = i.id
@@ -230,6 +290,7 @@ def get_yearly_contribution(target_year: str) -> Tuple[pd.DataFrame, float, List
     if df.empty: return pd.DataFrame(), 0.0, []
     
     soy_date = f"{int(target_year)-1}-12-31"
+    internal_transfers = get_internal_security_transfers()
     # For current year, use today's date instead of Dec 31
     today = datetime.now().strftime("%Y-%m-%d")
     eoy_date = today if str(target_year) == today[:4] else f"{target_year}-12-31"
@@ -273,8 +334,12 @@ def get_yearly_contribution(target_year: str) -> Tuple[pd.DataFrame, float, List
             h = holdings[sym]
             
             if t_type in ['BUY', 'SELL', 'INNLØSN. UTTAK VP', 'TILDELING INNLEGG RE', 'BYTTE INNLEGG VP', 'BYTTE UTTAK VP', 'TRANSFER_IN', 'TRANSFER_OUT', 'EMISJON INNLEGG VP']:
+                # A broker-to-broker move of the same position: the shares
+                # change account, the cost basis travels with them.
+                if row['id'] in internal_transfers:
+                    h['qty'] += qty
                 # Special Split Handling
-                if t_type == 'BYTTE UTTAK VP':
+                elif t_type == 'BYTTE UTTAK VP':
                     h['qty'] += qty # negative
                     # Do NOT reduce cost
                 elif t_type == 'BYTTE INNLEGG VP':
@@ -383,7 +448,7 @@ def get_yearly_contribution(target_year: str) -> Tuple[pd.DataFrame, float, List
 
 def get_yearly_equity_curve() -> Tuple[pd.DataFrame, List[Dict[str, Any]]]:
     query = """
-        SELECT t.date, t.type, t.instrument_id, t.quantity, t.amount, t.amount_local, i.symbol, i.currency,
+        SELECT t.id, t.date, t.type, t.instrument_id, t.quantity, t.amount, t.amount_local, i.symbol, i.currency,
                COALESCE(t.balance_currency, ?) AS settle_currency
         FROM transactions t
         LEFT JOIN instruments i ON t.instrument_id = i.id
@@ -394,6 +459,7 @@ def get_yearly_equity_curve() -> Tuple[pd.DataFrame, List[Dict[str, Any]]]:
     if df.empty: return pd.DataFrame(), []
     df['year'] = df['date'].str[:4]; years = sorted(df['year'].unique())
     split_map = get_internal_splits()
+    internal_transfers = get_internal_security_transfers()
     holdings = {}; cash_by_ccy = {}; results = []
     # 1. External Flows (Portfolio Level)
     flow_txns = df[df['type'].isin(EXTERNAL_FLOW_TYPES)].copy()
@@ -413,8 +479,11 @@ def get_yearly_equity_curve() -> Tuple[pd.DataFrame, List[Dict[str, Any]]]:
             if sym:
                 if sym not in holdings: holdings[sym] = {'qty': 0.0, 'cost': 0.0, 'curr': row['currency']}
                 h = holdings[sym]
+                # Broker-to-broker move: keep the cost basis with the shares
+                if row['id'] in internal_transfers:
+                    h['qty'] += qty
                 # Split Handling
-                if t_type == 'BYTTE UTTAK VP':
+                elif t_type == 'BYTTE UTTAK VP':
                     h['qty'] += qty
                 elif t_type == 'BYTTE INNLEGG VP':
                     h['qty'] += qty
@@ -466,7 +535,7 @@ def get_holdings(date: Optional[str] = None) -> pd.DataFrame:
         date_filter = "AND t.date <= ?"
         params = [date]
     query = f"""
-        SELECT t.instrument_id, t.type, t.quantity, t.amount_local, t.date, i.symbol, i.isin
+        SELECT t.id, t.instrument_id, t.type, t.quantity, t.amount_local, t.date, i.symbol, i.isin
         FROM transactions t
         LEFT JOIN instruments i ON t.instrument_id = i.id
         WHERE t.instrument_id IS NOT NULL {date_filter}
@@ -475,12 +544,19 @@ def get_holdings(date: Optional[str] = None) -> pd.DataFrame:
     with get_db_connection() as conn:
         df = query_df(query, conn, params=tuple(params) if params else None)
     if df.empty: return pd.DataFrame()
+    internal_transfers = get_internal_security_transfers()
     final_holdings = []
     for inst_id, group in df.groupby('instrument_id'):
         total_qty = 0.0; total_cost = 0.0; first_row = group.iloc[0]
         for _, row in group.iterrows():
             t_type = row['type']
             
+            # Broker-to-broker move of the same position: the shares change
+            # account, the cost basis travels with them.
+            if row['id'] in internal_transfers:
+                total_qty += row['quantity']
+                continue
+
             # Special handling for Internal Splits/Exchanges (Same Instrument)
             # We preserve the cost basis on withdrawal and carry it over to the new shares.
             if t_type == 'BYTTE UTTAK VP':
@@ -1177,7 +1253,7 @@ def get_realized_performance():
     # Get all transactions sorted by date
     query = '''
         SELECT
-            t.date, t.type, t.instrument_id, t.quantity, t.amount_local,
+            t.id, t.date, t.type, t.instrument_id, t.quantity, t.amount_local,
             t.fee_local, i.symbol
         FROM transactions t
         LEFT JOIN instruments i ON t.instrument_id = i.id
@@ -1190,6 +1266,7 @@ def get_realized_performance():
         return pd.DataFrame()
 
     # State
+    internal_transfers = get_internal_security_transfers()
     holdings = {} # inst_id -> {qty, total_cost}
     yearly = {}   # year -> {realized_gl, dividends, interest, fees, tax}
 
@@ -1238,6 +1315,12 @@ def get_realized_performance():
 
             # Identify Buy vs Sell using logic similar to get_holdings
             
+            # Broker-to-broker move: not a disposal, so no realized gain and
+            # the cost basis stays with the shares.
+            if row['id'] in internal_transfers:
+                h['qty'] += qty
+                continue
+
             # Special handling for Splits (BYTTE)
             if t_type == 'BYTTE UTTAK VP':
                 # Remove Quantity, KEEP Cost (deferred to new shares)
@@ -1504,13 +1587,20 @@ def get_portfolio_value_history() -> pd.DataFrame:
             "SELECT from_currency, date, rate FROM exchange_rates WHERE to_currency = ?",
             conn, params=(BASE_CURRENCY,))
         txns = query_df(
-            "SELECT date, type, instrument_id, quantity, amount, amount_local, "
+            "SELECT id, date, type, instrument_id, quantity, amount, amount_local, "
             "COALESCE(balance_currency, ?) AS settle_currency FROM transactions",
             conn, params=(BASE_CURRENCY,))
         instruments = query_df("SELECT id, currency FROM instruments", conn)
 
     if txns.empty:
         return empty
+
+    # Shares moved between two of our own brokers are held the whole time, but
+    # the two sides are booked days apart. Date both legs to the outgoing one so
+    # the running quantity nets out instead of dipping while they are in transit.
+    settled = get_internal_security_transfers()
+    if settled:
+        txns['date'] = [settled.get(i, d) for i, d in zip(txns['id'], txns['date'])]
 
     def to_day(series: pd.Series) -> pd.Series:
         return pd.to_datetime(series.astype(str).str[:10], format='%Y-%m-%d')

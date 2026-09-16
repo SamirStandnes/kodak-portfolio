@@ -392,3 +392,76 @@ class TestCashBalances:
         add_fx(temp_db, "USD", "2026-01-05", 11.0)
         df = calc.get_portfolio_value_history()
         assert df["cash"].tolist() == pytest.approx([1000 * 9.0 - 100.0, 1000 * 11.0 - 100.0])
+
+
+# ---------------------------------------------------------------------------
+# Internal security transfers (moving a position between our own brokers)
+# ---------------------------------------------------------------------------
+def add_account(path, aid, name):
+    run(path, "INSERT INTO accounts (id, name, broker, external_id) VALUES (?, ?, 'Broker', ?)",
+        (aid, name, str(aid)))
+
+
+def add_txn_for(path, account_id, date, type_, amount_local, instrument_id=None, quantity=None):
+    run(path, "INSERT INTO transactions (account_id, instrument_id, date, type, quantity, amount, "
+              "currency, amount_local) VALUES (?, ?, ?, ?, ?, ?, 'NOK', ?)",
+        (account_id, instrument_id, date, type_, quantity, amount_local, amount_local))
+
+
+class TestInternalSecurityTransfers:
+    """A share transfer between two of our own accounts is not a disposal: the
+    cost basis has to travel with the shares (broker B does not know the GAV)."""
+
+    def move(self, path, out_date="2026-03-01", in_date="2026-03-01", qty=100):
+        add_account(path, 2, "Broker B")
+        add_instrument(path, 1, "AAA")
+        add_txn_for(path, 1, "2026-01-10", "BUY", -1000.0, instrument_id=1, quantity=qty)
+        add_txn_for(path, 1, out_date, "TRANSFER_OUT", 0.0, instrument_id=1, quantity=-qty)
+        add_txn_for(path, 2, in_date, "TRANSFER_IN", 0.0, instrument_id=1, quantity=qty)
+
+    def test_cost_basis_survives_a_same_day_move(self, temp_db):
+        self.move(temp_db)
+        row = calc.get_holdings().iloc[0]
+        assert row["quantity"] == pytest.approx(100.0)
+        assert row["cost_basis_local"] == pytest.approx(1000.0)
+
+    def test_cost_basis_survives_when_the_brokers_book_days_apart(self, temp_db):
+        self.move(temp_db, out_date="2026-03-01", in_date="2026-03-06")
+        assert calc.get_internal_security_transfers() == {2: "2026-03-01", 3: "2026-03-01"}
+        row = calc.get_holdings().iloc[0]
+        assert row["quantity"] == pytest.approx(100.0)
+        assert row["cost_basis_local"] == pytest.approx(1000.0)
+
+    def test_shares_in_transit_stay_on_the_value_curve(self, temp_db):
+        self.move(temp_db, out_date="2026-03-01", in_date="2026-03-06")
+        add_price(temp_db, 1, "2026-03-03", 20.0)    # mid-transit
+        add_price(temp_db, 1, "2026-03-10", 20.0)
+        df = calc.get_portfolio_value_history()
+        assert df["holdings_value"].tolist() == pytest.approx([2000.0, 2000.0])
+
+    def test_gain_on_a_later_sale_uses_the_original_cost(self, temp_db):
+        """The move itself realizes nothing, and the shares keep the cost they
+        were bought for - otherwise the sale would report the whole proceeds."""
+        self.move(temp_db)
+        add_txn_for(temp_db, 2, "2026-04-01", "SELL", 1500.0, instrument_id=1, quantity=-100)
+        df = calc.get_realized_performance()
+        assert df[df["year"] == "2026"]["realized_gl"].iloc[0] == pytest.approx(500.0)
+
+    def test_legs_too_far_apart_are_not_paired(self, temp_db):
+        self.move(temp_db, out_date="2026-03-01", in_date="2026-05-01")
+        assert calc.get_internal_security_transfers() == {}
+
+    def test_unmatched_transfer_out_still_leaves_the_portfolio(self, temp_db):
+        add_instrument(temp_db, 1, "AAA")
+        add_txn_for(temp_db, 1, "2026-01-10", "BUY", -1000.0, instrument_id=1, quantity=100)
+        add_txn_for(temp_db, 1, "2026-03-01", "TRANSFER_OUT", 0.0, instrument_id=1, quantity=-40)
+        assert calc.get_internal_security_transfers() == {}
+        row = calc.get_holdings().iloc[0]
+        assert row["quantity"] == pytest.approx(60.0)
+        assert row["cost_basis_local"] == pytest.approx(600.0)
+
+    def test_cash_transfers_are_never_paired(self, temp_db):
+        add_account(temp_db, 2, "Broker B")
+        add_txn_for(temp_db, 1, "2026-03-01", "TRANSFER_OUT", -5000.0)
+        add_txn_for(temp_db, 2, "2026-03-01", "TRANSFER_IN", 5000.0)
+        assert calc.get_internal_security_transfers() == {}
